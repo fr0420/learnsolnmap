@@ -1,0 +1,146 @@
+"""
+Fermi-Pasta-Ulam Problem 
+"""
+
+
+const m = 3;
+const omega = 300;
+const halfomegasquared = 0.5 * omega^2;
+
+
+function A(q::AbstractArray{T, 1}) where T<:AbstractFloat
+    """Compute second order time derivative of q"""
+    
+    dq_stiff = q[2:2:end] - q[1:2:end]
+    q_pad = vcat([0], q, [0]) 
+    dq_soft = q_pad[2:2:end] - q_pad[1:2:end]
+
+    a_r = - halfomegasquared * dq_stiff + 4 * dq_soft[2:end].^3
+    a_l = halfomegasquared * dq_stiff - 4 * dq_soft[1:end-1].^3
+    
+    q_ddot = zero(q)
+    q_ddot[1:2:end] = a_l
+    q_ddot[2:2:end] = a_r
+    
+    return q_ddot
+end
+
+
+function compute_K(p::AbstractArray{T, 1}) where T<:AbstractFloat
+    """Compute kinetic energy"""
+    return 0.5 * p' * p
+end
+
+
+
+function compute_U(q::AbstractArray{T, 1}) where T<:AbstractFloat
+    """Compute potential energy"""
+    
+    dq_stiff = q[2:2:end] - q[1:2:end]
+    q_pad = vcat([0], q, [0]) 
+    dq_soft = q_pad[2:2:end] - q_pad[1:2:end]
+    
+    U = 0.5 * halfomegasquared * sum(dq_stiff.^2) + sum(dq_soft.^4) 
+    return U
+end
+
+
+function compute_H(p::AbstractArray{T, 1}, q::AbstractArray{T, 1}) where T<:AbstractFloat
+    """Compute total energy / Hamiltonian"""
+    
+    return compute_K(p) + compute_U(q)
+end
+
+
+function compute_I(p::AbstractArray{T, 1}, q::AbstractArray{T, 1}) where T<:AbstractFloat
+    """Compute energy of stiff springs"""
+    
+    dq_stiff = q[2:2:end] - q[1:2:end]
+    dp_stiff = p[2:2:end] - p[1:2:end]
+    
+    return 0.25 * dp_stiff.^2 + 0.5 * halfomegasquared * dq_stiff.^2
+end
+
+
+# Initial conditions 
+q0 = zeros(2*m);
+p0 = zeros(2*m);
+q0[1] = (1 - 1/omega)/sqrt(2);
+q0[2] = (1 + 1/omega)/sqrt(2);
+p0[2] = sqrt(2);
+
+# Initial energy 
+K0 = compute_K(p0);
+U0 = compute_U(q0);
+H0 = compute_H(p0, q0);
+
+
+using NL2sol
+
+const Lengthz = 4*m+1;
+const C1 = omega/sqrt(2);
+const C2 = 2 * sqrt(2);
+
+
+function construct_z(p::AbstractArray{T, 1}, q::AbstractArray{T, 1}) where T<:AbstractFloat
+    z = zeros(T, Lengthz)
+    z[1:2*m] = p
+    
+    dq_stiff = q[2:2:end] - q[1:2:end]
+    q_pad = vcat([0], q, [0]) 
+    dq_soft = q_pad[2:2:end] - q_pad[1:2:end]
+    
+    z[2*m+1:3*m] = C1 * dq_stiff
+    z[3*m+1:end] = sqrt(2) * dq_soft.^2
+    
+    return z        
+end
+
+
+function compute_dq(q::AbstractArray{T, 1}) where T<:AbstractFloat
+    dq = zeros(T, 2*m+1)
+    
+    dq_stiff = q[2:2:end] - q[1:2:end]
+    q_pad = vcat([0], q, [0]) 
+    dq_soft = q_pad[2:2:end] - q_pad[1:2:end]
+    
+    dq[1:m] = C1 * dq_stiff
+    dq[m+1:end] = sqrt(2) * dq_soft.^2
+    
+    return dq
+end 
+
+
+function Jac_dq(q::AbstractArray{T, 1}) where T<:AbstractFloat
+    J = zeros(T, (2*m+1, 2*m))
+    
+    q_pad = vcat([0], q, [0]) 
+    dq_soft = q_pad[2:2:end] - q_pad[1:2:end]
+    
+    for i in 1:m
+        J[i, 2*i-1] = - C1
+        J[i, 2*i] = C1
+    end 
+    
+    for i in 2:m
+        J[m+i, 2*i-2] = - C2 * dq_soft[i]
+        J[m+i, 2*i-1] = C2 * dq_soft[i]
+    end
+    
+    J[m+1, 1] = C2 * dq_soft[1]
+    J[end, end] = - C2 * dq_soft[end]
+    
+    return J
+end
+
+                
+function recover_canonical_vars(z::AbstractArray{T, 1}) where T<:AbstractFloat
+    
+    p = z[1:2*m]
+    dq = z[2*m+1:end]
+    
+    res = nl2sol((q,r)->compute_dq(q).-dq, (q,r)->Jac_dq(q), q0, 2*m+1; quiet=true)
+    q = res.minimum 
+    
+    return p, q
+end
