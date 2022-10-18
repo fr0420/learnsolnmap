@@ -46,23 +46,41 @@ function A(x::Array{T, 1}) where T<:AbstractFloat
     return vec(xddot)
 end
 
+
 LJ_potential(r) = 4EPSILON * ((SIGMA/r)^(12) - (SIGMA/r)^(6))
 
-function compute_hamiltonian(v::AbstractArray{T, 1}, x::AbstractArray{T, 1}) where T<:AbstractFloat
-    
-    K = 0.5MASS * v' * v
+
+function compute_K(v::AbstractArray{T, 1}) where T<:AbstractFloat
+    """Compute kinetic energy"""
+    return 0.5 * MASS * v' * v
+end
+
+
+
+function compute_U(x::AbstractArray{T, 1}) where T<:AbstractFloat
+    """Compute potential energy"""
     
     x_reshaped = reshape(x, (d, Natoms))
     dist = distance_matrix(x_reshaped)
     U = sum([LJ_potential(dist[i, j]) for i in 1:Natoms for j in 1:i-1])
-    return K + U
+    return U
 end
+
+
+function compute_H(v::AbstractArray{T, 1}, x::AbstractArray{T, 1}) where T<:AbstractFloat
+    """Compute total energy / Hamiltonian"""
+    return compute_K(v) + compute_U(x)
+end
+
 
 # Initial conditions
 x0 = vec([0.0 0.0 0.02 0.39 0.34 0.17 0.36 -0.21 -0.02 -0.4 -0.35 -0.16 -0.31 0.21]);
 v0 = vec([-30.0 -20.0 50.0 -90.0 -70.0 -60.0 90.0 40.0 80.0 90.0 -40.0 100.0 -80.0 -60.0]);
 
-H0 = compute_hamiltonian(v0, x0);
+# Initial energy 
+K0 = compute_K(v0);
+U0 = compute_U(x0);
+H0 = compute_H(v0, x0);
 
 
 w(r::T) where T<:AbstractFloat = (SIGMA / r)^6
