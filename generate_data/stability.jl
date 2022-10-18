@@ -57,6 +57,8 @@ if problem == "lennardjones"
     q0 = x0
 end 
 
+# p0 /= sqrt(2)
+
 println("p0: $p0")
 println("q0: $q0")
 

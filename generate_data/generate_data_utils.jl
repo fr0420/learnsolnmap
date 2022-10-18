@@ -72,14 +72,14 @@ function nShellSampling(n::Int, n_samples::Int, epsilon::T) where T<:AbstractFlo
 end
 
 
-function Normal(mean::T, std::T) where T<:AbstractFloat
+function normal(mean::T, std::T) where T<:AbstractFloat
     """Generate a random variable from a normal distribution"""
 
     return randn() * std .+ mean
 end
 
 
-function Normal(mean::T, std::T, n_samples::Int) where T<:AbstractFloat
+function normal(mean::T, std::T, n_samples::Int) where T<:AbstractFloat
     """Generate random variables from a normal distribution"""
 
     return randn(n_samples) * std .+ mean
