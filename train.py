@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import TensorDataset, DataLoader, random_split
-from model import MLP, ResMLP
+from model import LitModel
 
 from torch import nn
 import pytorch_lightning as pl
@@ -29,12 +29,13 @@ class RandomizedSequenceWeights(Callback):
         self.n2 = n2 
         self.prob = torch.tensor([0] * n1 + [1] * (sequence_len - n1), dtype=torch.float)
         self.base_weights = torch.tensor([1] * n1 + [0] * (sequence_len - n1))
-        self.base_factors = 1./ torch.arange(1, sequence_len+1)
+#         self.base_factors = 1./ torch.arange(1, sequence_len+1)
+        self.base_factors = 1.
         
     def on_fit_start(self, trainer, pl_module):
         self.prob = self.prob.to(pl_module.device)
         self.base_weights = self.base_weights.to(pl_module.dtype).to(pl_module.device)
-        self.base_factors = self.base_factors.to(pl_module.dtype).to(pl_module.device)
+#         self.base_factors = self.base_factors.to(pl_module.dtype).to(pl_module.device)
         pl_module.set_sequence_weights(self.base_weights*self.base_factors)
         
     def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
@@ -49,32 +50,38 @@ print('Using pytorch lightning', pl.__version__)
 
 # Config dictionary
 CONFIG = dict (
-    group = 'fpu',
+    group = 'lennardjones',
     seed = 42,
-    train_dir = "./data/fpu/mc/Dt1e0_dt1e-1_h5e-6_omega300/sigma0.1/train",
-    test_dir =  "./data/fpu/mc/Dt1e0_dt1e-1_h5e-6_omega300/sigma0.1/test",
+    train_dir = "./data/lj/f-rhmc-H0/dt5e-5_h5e-8/Nchains100_Njumps400_Nsteps4/sigma1e-2/Dt1e-4/train",
+    test_dir = "./data/lj/f-rhmc-H0/dt5e-5_h5e-8/Nchains100_Njumps400_Nsteps4/sigma1e-2/Dt1e-4/test",
     model = 'ResMLP',
     batch_size = 100,
-    layer_sizes = [12, 100, 100, 100, 100, 12],
+    layer_sizes = [28, 1000, 1000, 1000, 1000, 1000, 1000, 28],
     activation_fn = 'ELU',
     activation_kwargs = {},
     use_bn = False,
+    use_scale = True,
     loss_fn = 'MSELoss',
     optimizer_fn = 'AdamW',
-    optimizer_kwargs = {'lr': 2e-5, 'weight_decay': 1e-2}, 
-    lr_scheduler_fn = None, lr_scheduler_kwargs = {},
+#     optimizer_fn = 'SGD',
+    optimizer_kwargs = {'lr': 1e-4, 'weight_decay': 1e-2}, 
+#     optimizer_kwargs = {'lr': 1e-2, 'momentum': 0.9, 'weight_decay': 1e-4}, 
+#     lr_scheduler_fn = None, lr_scheduler_kwargs = {},
 #     lr_scheduler_fn = 'CyclicLR',
 #     lr_scheduler_kwargs = {'base_lr': 1e-5, 'max_lr': 1e-3, 'step_size_up': 50000, 'step_size_down': 50000, 'mode': 'triangular2', 'cycle_momentum': True},
-#     lr_scheduler_fn = 'OneCycleLR',
-#     lr_scheduler_kwargs = {'max_lr': 1e-4, 'epochs': 10000, 'steps_per_epoch': 1600, 'anneal_strategy': 'cos', 'cycle_momentum': False, 
-#                            'three_phase': False, 'pct_start': 0.3},
+    lr_scheduler_fn = 'OneCycleLR',
+    lr_scheduler_kwargs = {'max_lr': 1e-4, 'epochs': 1000, 'steps_per_epoch': 1632, 'anneal_strategy': 'cos', 'cycle_momentum': False, 
+                           'three_phase': False, 'pct_start': 0.3},
+#     lr_scheduler_fn = 'ReduceLROnPlateau',
+#     lr_scheduler_kwargs = {'factor': 0.85, 'patience': 5, 'cooldown': 5},
     lr_scheduler_interval = 'step',
     H_strength = 0.,
-    sequence_weights = None,
-    sequence_len = 20,
-    n1 = 2,
-    n2 = 3,
-    gpus = [0],
+    sequence_weights = [1, 1, 1, 1, 1],
+    sequence_len = 5,
+    n1 = 3,
+    n2 = 2,
+    gpus = [1],
+    strategy = None,
     num_epochs = 1000
 )
 
@@ -96,7 +103,13 @@ seed_everything(CONFIG['seed'])
 def get_dataset(data_dir):
     
     filenames = [f"U{n}.csv" for n in range(CONFIG['sequence_len']+1)]
-    data = [torch.tensor(pd.read_csv(os.path.join(data_dir, fname)).to_numpy()) for fname in filenames]
+#     data = [torch.tensor(pd.read_csv(os.path.join(data_dir, fname)).to_numpy()) for fname in filenames]
+    data = []
+    for fname in filenames: 
+        u = pd.read_csv(os.path.join(data_dir, fname)).to_numpy()
+        v, x = u[:, :14], u[:, 14:]
+        u = np.concatenate((v/100., x), axis=1)
+        data.append(torch.tensor(u))
     ds = TensorDataset(*data)
     return ds
 
@@ -134,37 +147,26 @@ checkpoint_callback = pl.callbacks.ModelCheckpoint(
 lr_monitor = pl.callbacks.LearningRateMonitor(logging_interval='step')
 
 # Define sequence weights 
-# fixed_seq_weights = FixedSequenceWeights(weights=CONFIG['sequence_weights'])
-randomized_seq_weights = RandomizedSequenceWeights(sequence_len=CONFIG['sequence_len'], n1=CONFIG['n1'], n2=CONFIG['n2'])
+fixed_seq_weights = FixedSequenceWeights(weights=CONFIG['sequence_weights'])
+# randomized_seq_weights = RandomizedSequenceWeights(sequence_len=CONFIG['sequence_len'], n1=CONFIG['n1'], n2=CONFIG['n2'])
 
 
 # Initialize model 
-# model = {'MLP': MLP, 'ResMLP': ResMLP}[CONFIG['model']]
-# lit_model = model(
-#     layer_sizes=CONFIG['layer_sizes'], 
-#     activation_fn=CONFIG['activation_fn'],
-#     activation_kwargs=CONFIG['activation_kwargs'],
-#     use_bn=CONFIG['use_bn'],
-#     loss_fn=CONFIG['loss_fn'],
-#     optimizer_fn=CONFIG['optimizer_fn'],
-#     optimizer_kwargs=CONFIG['optimizer_kwargs'],
-#     lr_scheduler_fn=CONFIG['lr_scheduler_fn'],
-#     lr_scheduler_kwargs=CONFIG['lr_scheduler_kwargs'],
-#     lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
-#     H_strength=CONFIG['H_strength']
-# ).double()
-
-# checkpoint_path = "/workspace/projects_rui/learnsolnmap/solutionmap/k46sho6h/checkpoints/epoch9994-val_loss6.864e-06.ckpt" # dataset 1
-checkpoint_path = "/workspace/projects_rui/learnsolnmap/solutionmap/17agky94/checkpoints/epoch9995-val_loss1.566e-05.ckpt" # dataset 2
-lit_model = ResMLP.load_from_checkpoint(
-    checkpoint_path, 
-    strict=False,
+lit_model = LitModel(
+    model_name=CONFIG['model'],
+    layer_sizes=CONFIG['layer_sizes'], 
+    activation_fn=CONFIG['activation_fn'],
+    activation_kwargs=CONFIG['activation_kwargs'],
+    use_bn=CONFIG['use_bn'],
+    use_scale=CONFIG['use_scale'],
+    loss_fn=CONFIG['loss_fn'],
     optimizer_fn=CONFIG['optimizer_fn'],
     optimizer_kwargs=CONFIG['optimizer_kwargs'],
     lr_scheduler_fn=CONFIG['lr_scheduler_fn'],
     lr_scheduler_kwargs=CONFIG['lr_scheduler_kwargs'],
     lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
-    H_strength=CONFIG['H_strength']
+    H_strength=CONFIG['H_strength'],
+    problem=CONFIG['group'],
 ).double()
 
 # Initialize W&B logger 
@@ -173,10 +175,13 @@ wandb_logger = WandbLogger(name=current_time, project='solutionmap', group=CONFI
 
 # Initialize trainer
 trainer = pl.Trainer(
-    gpus=CONFIG['gpus'], 
+    gpus=CONFIG['gpus'],
+    strategy=CONFIG['strategy'],
     max_epochs=CONFIG['num_epochs'],
     logger=wandb_logger,
-    callbacks=[randomized_seq_weights,
+    callbacks=[
+        fixed_seq_weights,
+#                randomized_seq_weights,
                lr_monitor, 
                checkpoint_callback
               ], 
@@ -191,4 +196,4 @@ trainer.fit(lit_model, train_loader, test_loader)
 print("Best model saved to:\n", checkpoint_callback.best_model_path)
 
 # Close W&B logger
-wandb_logger.close()
+wandb_logger.finalize('success')
