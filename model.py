@@ -142,7 +142,7 @@ class HamiltonianReversibleBlock(nn.Module):
         
         self.layer1 = nn.Linear(self.dof, self.dof)
         self.layer2 = nn.Linear(self.dof, self.dof)
-        self.h = 1e-2
+        self.h = 1e-3
         
     def forward(self, x):
         
@@ -188,7 +188,15 @@ class HamiltonianReversibleNetwork(nn.Module):
         x = self.layers[-1](x)
         return x
     
-    
+    def compute_weight_smoothness(self):
+        s = 0.
+        for layer_cur, layer_next in zip(self.layers[:-1], self.layers[1:]):
+            if isinstance(layer_cur, HamiltonianReversibleBlock):
+                if isinstance(layer_next, HamiltonianReversibleBlock):
+                    if layer_cur.dof == layer_next.dof:
+                        s += torch.linalg.norm(layer_next.layer1.weight - layer_cur.layer1.weight) 
+                        s += torch.linalg.norm(layer_next.layer2.weight - layer_cur.layer2.weight) 
+        return s / 1e-3
     
 
 def get_activation(activation_fn, **kwargs):
@@ -221,7 +229,7 @@ NSTEPS_TO_EVAL = 10
         
         
 class LitModel(pl.LightningModule):
-    def __init__(self, model_name, layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale, loss_fn, optimizer_fn, optimizer_kwargs, lr_scheduler_fn, lr_scheduler_kwargs, lr_scheduler_interval, H_strength, problem):
+    def __init__(self, model_name, layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale, loss_fn, optimizer_fn, optimizer_kwargs, lr_scheduler_fn, lr_scheduler_kwargs, lr_scheduler_interval, H_strength, WS_strength, problem):
         super(LitModel, self).__init__()
         
         self.save_hyperparameters()
@@ -243,7 +251,8 @@ class LitModel(pl.LightningModule):
             self.compute_H = lambda u: lj.compute_H(u[:, :14]*100., u[:, 14:])
         else:
             self.compute_H = None 
-            
+        
+        self.WS_strength = WS_strength 
         self.sequence_len = 1
         self.weights = None
     
@@ -273,7 +282,10 @@ class LitModel(pl.LightningModule):
         
         loss_H = H_losses.sum()
 #         loss += self.H_strength * loss_H  # disable H gradient computation for now 
-         
+        
+        if isinstance(self.model, HamiltonianReversibleNetwork):
+            loss_WS = self.WS_strength * self.model.compute_weight_smoothness()
+            loss += loss_WS
             
 #         d = torch.stack([torch.det(torch.autograd.functional.jacobian(self, u0, create_graph=True)) for u0 in batch[0]])
 #         loss_d = torch.mean((d-1)**2)
