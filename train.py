@@ -79,6 +79,7 @@ if __name__ == '__main__':
     ap.add_argument('--batch_size', default=100, type=int, help='batch size')
     ap.add_argument('--model', default='ResMLP', help='model (MLP, ResMLP, or HamiltonianReversibleNetwork)')
     ap.add_argument('--layer_sizes', default=[28, 1000, 1000, 28], nargs='+', type=int, help='layer sizes')
+    ap.add_argument('--ws_strength', default=0., type=float, help='weight smoothness regularization strength')
     ap.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     ap.add_argument('--num_epochs', default=1000, type=int, help='number of epochs')
     ap.add_argument('--gpus', default=[0], nargs='+', type=int, help='gpus')
@@ -104,13 +105,14 @@ if __name__ == '__main__':
     #     optimizer_kwargs = {'lr': 1e-2, 'momentum': 0.9, 'weight_decay': 1e-4}, 
     #     lr_scheduler_fn = None, lr_scheduler_kwargs = {},
     #     lr_scheduler_fn = 'CyclicLR',
-    #     lr_scheduler_kwargs = {'base_lr': 1e-5, 'max_lr': 1e-3, 'step_size_up': 50000, 'step_size_down': 50000, 'mode': 'triangular2', 'cycle_momentum': True},
+    #     lr_scheduler_kwargs = {'brase_lr': 1e-5, 'max_lr': 1e-3, 'step_size_up': 50000, 'step_size_down': 50000, 'mode': 'triangular2', 'cycle_momentum': True},
         lr_scheduler_fn = 'OneCycleLR',
-        lr_scheduler_kwargs = {'max_lr': args.lr, 'epochs': 1000, 'steps_per_epoch': 1600, 'anneal_strategy': 'cos', 'cycle_momentum': False, 'three_phase': False, 'pct_start': 0.3},
+        lr_scheduler_kwargs = {'max_lr': args.lr, 'epochs': args.num_epochs, 'steps_per_epoch': 1600, 'anneal_strategy': 'cos', 'cycle_momentum': False, 'three_phase': False, 'pct_start': 0.3},
     #     lr_scheduler_fn = 'ReduceLROnPlateau',
     #     lr_scheduler_kwargs = {'factor': 0.85, 'patience': 5, 'cooldown': 5},
         lr_scheduler_interval = 'step',
         H_strength = 0.,
+        WS_strength = args.ws_strength,
         sequence_weights = [1, 1, 1, 1, 1],
         sequence_len = 5,
         n1 = 3,
@@ -168,6 +170,7 @@ if __name__ == '__main__':
         lr_scheduler_kwargs=CONFIG['lr_scheduler_kwargs'],
         lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
         H_strength=CONFIG['H_strength'],
+        WS_strength=CONFIG['WS_strength'],
         problem=CONFIG['group'],
     ).double()
 
