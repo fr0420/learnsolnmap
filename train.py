@@ -1,6 +1,7 @@
 import argparse 
 import os 
 import numpy as np
+import math 
 import pandas as pd
 import datetime
 import torch
@@ -83,6 +84,7 @@ if __name__ == '__main__':
     ap.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     ap.add_argument('--num_epochs', default=1000, type=int, help='number of epochs')
     ap.add_argument('--gpus', default=[0], nargs='+', type=int, help='gpus')
+    ap.add_argument('--resume_from_ckpt', default=None, help='resume from checkpoint')
     args = ap.parse_args()
     
     # Config dictionary
@@ -107,7 +109,7 @@ if __name__ == '__main__':
     #     lr_scheduler_fn = 'CyclicLR',
     #     lr_scheduler_kwargs = {'brase_lr': 1e-5, 'max_lr': 1e-3, 'step_size_up': 50000, 'step_size_down': 50000, 'mode': 'triangular2', 'cycle_momentum': True},
         lr_scheduler_fn = 'OneCycleLR',
-        lr_scheduler_kwargs = {'max_lr': args.lr, 'epochs': args.num_epochs, 'steps_per_epoch': 1600, 'anneal_strategy': 'cos', 'cycle_momentum': False, 'three_phase': False, 'pct_start': 0.3},
+        lr_scheduler_kwargs = {'max_lr': args.lr, 'epochs': args.num_epochs, 'steps_per_epoch': int(math.ceil(160000/args.batch_size)), 'anneal_strategy': 'cos', 'cycle_momentum': False, 'three_phase': False, 'pct_start': 0.3},
     #     lr_scheduler_fn = 'ReduceLROnPlateau',
     #     lr_scheduler_kwargs = {'factor': 0.85, 'patience': 5, 'cooldown': 5},
         lr_scheduler_interval = 'step',
@@ -175,8 +177,12 @@ if __name__ == '__main__':
     ).double()
 
     # Initialize W&B logger 
-    current_time = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-    wandb_logger = WandbLogger(name=current_time, project='solutionmap', group=CONFIG['group'], version=0, config=CONFIG)
+    if args.resume_from_ckpt is not None: 
+        id = args.resume_from_ckpt.split('/')[-3]
+        wandb_logger = WandbLogger(project='solutionmap', group=CONFIG['group'], id=id, resume='must')
+    else:
+        current_time = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+        wandb_logger = WandbLogger(name=current_time, project='solutionmap', group=CONFIG['group'], version=0, config=CONFIG)
 
     # Initialize trainer
     trainer = pl.Trainer(
@@ -193,10 +199,13 @@ if __name__ == '__main__':
     )
 
     # Log gradients and model topology
-    wandb_logger.watch(lit_model, log='all')
+    wandb_logger.watch(lit_model, log='all', log_freq=500)
 
     # Fit data 
-    trainer.fit(lit_model, train_loader, test_loader)
+    if args.resume_from_ckpt is not None:
+        trainer.fit(lit_model, train_loader, test_loader, ckpt_path=args.resume_from_ckpt)
+    else:
+        trainer.fit(lit_model, train_loader, test_loader)
 
     print("Best model saved to:\n", checkpoint_callback.best_model_path)
 
