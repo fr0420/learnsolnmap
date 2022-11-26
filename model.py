@@ -184,7 +184,8 @@ class HamiltonianReversibleNetwork(nn.Module):
             x = self.layers[i](x)
             if self.use_bn:
                 x = self.bn_layers[i](x)
-            x = self.activation(x)
+            if not isinstance(self.layers[i], HamiltonianReversibleBlock):
+                x = self.activation(x)
         x = self.layers[-1](x)
         return x
     
@@ -335,6 +336,242 @@ class LitModel(pl.LightningModule):
         loss = losses @ self.weights
         
         return loss, losses
+    
+    def _shared_epoch_end(self, outputs, stage=None):
+        n_total = sum([out['batch_size'] for out in outputs])
+        
+        def aggregate_outputs(m):
+            return torch.stack([out['metrics'][m] * out['batch_size'] for out in outputs]).sum() / n_total
+        
+        metrics = {m: aggregate_outputs(m) for m in outputs[0]['metrics'].keys()}
+        logs = dict()
+        for m in metrics.keys():
+            logs['/'.join([stage, m])] = metrics[m].detach().item()
+        if self.trainer.is_global_zero:
+            self.log_dict(logs, rank_zero_only=True)
+        
+    def configure_optimizers(self):
+        optimizer = self.optimizer_fn(self.parameters(), **self.optimizer_kwargs)
+        if self.lr_scheduler_fn is not None:
+            lr_scheduler = {
+                'scheduler': self.lr_scheduler_fn(optimizer, **self.lr_scheduler_kwargs),
+                'interval': self.lr_scheduler_interval,
+                'monitor': 'train/loss'
+            }
+            return {'optimizer': optimizer, 'lr_scheduler': lr_scheduler}
+        else:
+            return optimizer
+
+
+class SolutionMap(pl.LightningModule):
+    def __init__(self, h2h_model_name, h2h_layer_sizes, i2h_layer_sizes, h2o_layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale, loss_fn, optimizer_fn, optimizer_kwargs, lr_scheduler_fn, lr_scheduler_kwargs, lr_scheduler_interval, H_strength, WS_strength, problem):
+        super(SolutionMap, self).__init__()
+        
+        self.save_hyperparameters()
+        
+        self.i2h = get_model('MLP', i2h_layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale) if i2h_layer_sizes is not None else nn.Identity()
+        self.h2h = get_model(h2h_model_name, h2h_layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale)
+        self.h2o = get_model('MLP', h2o_layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale) if h2o_layer_sizes is not None else nn.Identity()
+        
+        self.loss_fn = get_loss_fn(loss_fn)
+        self.optimizer_fn = OPTIMIZER_DICT[optimizer_fn]
+        self.optimizer_kwargs = optimizer_kwargs 
+        self.lr_scheduler_fn = LR_SCHEDULER_DICT[lr_scheduler_fn] if lr_scheduler_fn is not None else None
+        self.lr_scheduler_kwargs = lr_scheduler_kwargs
+        self.lr_scheduler_interval = lr_scheduler_interval
+        
+        self.H_strength = H_strength 
+        if problem == 'fpu':
+            fpu = FPU()
+            self.compute_H = lambda u: fpu.compute_H(u[:, :6], u[:, 6:])
+        elif problem == 'lennardjones':
+            lj = LennardJones()
+            self.compute_H = lambda u: lj.compute_H(u[:, :14]*100., u[:, 14:])
+        else:
+            self.compute_H = None 
+        
+        self.WS_strength = WS_strength 
+        self.sequence_len = 1
+        self.weights = None
+    
+    def set_sequence_weights(self, weights):
+        self.weights = weights 
+        self.sequence_len = len(weights)
+        
+    def forward(self, x, sequence_len):
+        res = []
+        hidden = self.i2h(x)
+        for i in range(sequence_len):
+            hidden = self.h2h(hidden)
+            res.append(self.h2o(hidden))
+        return res
+        
+    def training_step(self, batch, batch_idx):
+        losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
+        self.weights = self.weights.type_as(losses)
+        H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
+        
+        u0 = batch[0]
+        H0 = self.compute_H(u0)
+        res = self.forward(u0, self.sequence_len)
+        
+        for t in range(1, self.sequence_len+1):
+            ut_pred = res[t-1]
+            ut_true = batch[t]
+            
+            if t <= 2: 
+                H_losses[t-1] = self.loss_fn(self.compute_H(ut_pred), H0)
+            if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
+                losses[t-1] = self.loss_fn(ut_pred, ut_true)
+        
+        loss = losses @ self.weights
+        
+        loss_H = H_losses.sum()
+#         loss += self.H_strength * loss_H  # disable H gradient computation for now 
+        
+        if isinstance(self.h2h, HamiltonianReversibleNetwork):
+            loss_WS = self.WS_strength * self.h2h.compute_weight_smoothness()
+            loss += loss_WS
+            
+#         d = torch.stack([torch.det(torch.autograd.functional.jacobian(self, u0, create_graph=True)) for u0 in batch[0]])
+#         loss_d = torch.mean((d-1)**2)
+#         loss += loss_d
+        
+        self.log('step_loss', loss, on_step=True, on_epoch=False, prog_bar=True)
+        metrics = {'loss': loss.detach()}
+        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
+            metrics[f'loss_step{t+1}'] = l.detach()
+        metrics['loss_H'] = loss_H.detach()
+        return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
+  
+    def training_epoch_end(self, outputs):
+        self._shared_epoch_end(outputs, 'train')
+        
+    def validation_step(self, batch, batch_idx):
+        loss, losses = self._shared_eval_step(batch, batch_idx)   
+        metrics = {'loss': loss}
+        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
+            metrics[f'loss_step{t+1}'] = l 
+        return {'batch_size': len(batch[0]), 'metrics': metrics}
+    
+    def validation_epoch_end(self, outputs):
+        self._shared_epoch_end(outputs, 'val')
+    
+    def test_step(self, batch, batch_idx):
+        loss, losses = self._shared_eval_step(batch, batch_idx)    
+        metrics = {'loss': loss}
+        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
+            metrics[f'loss_step{t+1}'] = l
+        return {'batch_size': len(batch[0]), 'metrics': metrics}
+    
+    def test_epoch_end(self, outputs):
+        self._shared_epoch_end(outputs, 'test')
+        
+    def _shared_eval_step(self, batch, batch_idx):
+        losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
+        self.weights = self.weights.type_as(losses)
+        
+        u0 = batch[0]
+        res = self.forward(u0, self.sequence_len)
+        
+        for t in range(1, self.sequence_len+1):
+            ut_pred = res[t-1]
+            ut_true = batch[t]
+            
+            if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
+                losses[t-1] = self.loss_fn(ut_pred, ut_true)
+        
+        loss = losses @ self.weights
+        
+        return loss, losses
+    
+    def _shared_epoch_end(self, outputs, stage=None):
+        n_total = sum([out['batch_size'] for out in outputs])
+        
+        def aggregate_outputs(m):
+            return torch.stack([out['metrics'][m] * out['batch_size'] for out in outputs]).sum() / n_total
+        
+        metrics = {m: aggregate_outputs(m) for m in outputs[0]['metrics'].keys()}
+        logs = dict()
+        for m in metrics.keys():
+            logs['/'.join([stage, m])] = metrics[m].detach().item()
+        if self.trainer.is_global_zero:
+            self.log_dict(logs, rank_zero_only=True)
+        
+    def configure_optimizers(self):
+        optimizer = self.optimizer_fn(self.parameters(), **self.optimizer_kwargs)
+        if self.lr_scheduler_fn is not None:
+            lr_scheduler = {
+                'scheduler': self.lr_scheduler_fn(optimizer, **self.lr_scheduler_kwargs),
+                'interval': self.lr_scheduler_interval,
+                'monitor': 'train/loss'
+            }
+            return {'optimizer': optimizer, 'lr_scheduler': lr_scheduler}
+        else:
+            return optimizer
+        
+
+class CorrectionOperator(pl.LightningModule):
+    def __init__(self, model_name, layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale, loss_fn, optimizer_fn, optimizer_kwargs, lr_scheduler_fn, lr_scheduler_kwargs, lr_scheduler_interval, WS_strength):
+        super(CorrectionOperator, self).__init__()
+        
+        self.save_hyperparameters()
+        
+        self.model = get_model(model_name, layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale)
+        self.loss_fn = get_loss_fn(loss_fn)
+        self.optimizer_fn = OPTIMIZER_DICT[optimizer_fn]
+        self.optimizer_kwargs = optimizer_kwargs 
+        self.lr_scheduler_fn = LR_SCHEDULER_DICT[lr_scheduler_fn] if lr_scheduler_fn is not None else None
+        self.lr_scheduler_kwargs = lr_scheduler_kwargs
+        self.lr_scheduler_interval = lr_scheduler_interval
+        
+        self.WS_strength = WS_strength 
+    
+    def forward(self, x):
+        return self.model(x)
+        
+    def training_step(self, batch, batch_idx):
+        
+        inputs, targets = batch[0], batch[1]
+            
+        outputs = self.forward(inputs)
+        loss = self.loss_fn(outputs, targets)
+        
+        if isinstance(self.model, HamiltonianReversibleNetwork):
+            loss_WS = self.WS_strength * self.model.compute_weight_smoothness()
+            loss += loss_WS
+   
+        self.log('step_loss', loss, on_step=True, on_epoch=False, prog_bar=True)
+        metrics = {'loss': loss.detach()}
+        return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
+  
+    def training_epoch_end(self, outputs):
+        self._shared_epoch_end(outputs, 'train')
+        
+    def validation_step(self, batch, batch_idx):
+        loss = self._shared_eval_step(batch, batch_idx)   
+        metrics = {'loss': loss}
+        return {'batch_size': len(batch[0]), 'metrics': metrics}
+    
+    def validation_epoch_end(self, outputs):
+        self._shared_epoch_end(outputs, 'val')
+    
+    def test_step(self, batch, batch_idx):
+        loss = self._shared_eval_step(batch, batch_idx)    
+        metrics = {'loss': loss}
+        return {'batch_size': len(batch[0]), 'metrics': metrics}
+    
+    def test_epoch_end(self, outputs):
+        self._shared_epoch_end(outputs, 'test')
+        
+    def _shared_eval_step(self, batch, batch_idx):
+        
+        inputs, targets = batch[0], batch[1]
+            
+        outputs = self.forward(inputs)
+        loss = self.loss_fn(outputs, targets)
+        
+        return loss
     
     def _shared_epoch_end(self, outputs, stage=None):
         n_total = sum([out['batch_size'] for out in outputs])
