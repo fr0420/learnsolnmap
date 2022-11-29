@@ -45,7 +45,6 @@ class FPU:
         self.C0 = 0.25 * self.Omega**2
     
     def compute_H(self, p, q):
-        
         return self.compute_U(q) + self.compute_K(p)
     
     def compute_U(self, q):
@@ -57,3 +56,13 @@ class FPU:
     def compute_K(self, p):
         K = 0.5 * torch.sum(p**2, dim=-1)
         return K
+    
+    def compute_q_ddot(self, q):
+        dq_stiff = q[:, 1::2] - q[:, ::2]
+        dq_soft = torch.stack((q[:, 0], q[:, 2]-q[:, 1], q[:, 4]-q[:, 3], -q[:, 5]), dim=1)
+
+        a_r = - 2 * self.C0 * dq_stiff + 4 * dq_soft[:, 1:]**3
+        a_l = 2 * self.C0 * dq_stiff - 4 * dq_soft[:, :-1]**3
+        q_ddot = torch.stack((a_l, a_r), dim=-1)
+    
+        return q_ddot.flatten(start_dim=1)
