@@ -377,12 +377,12 @@ class LitModel(pl.LightningModule):
      
         
 class GenericModel(pl.LightningModule):
-    def __init__(self, loss_fn, optimizer_fn, optimizer_kwargs, lr_scheduler_fn, lr_scheduler_kwargs, lr_scheduler_interval):
+    def __init__(self, loss_fn='MSELoss', optimizer_fn='AdamW', optimizer_kwargs=None, lr_scheduler_fn=None, lr_scheduler_kwargs=None, lr_scheduler_interval='epoch'):
         super(GenericModel, self).__init__()
         
         self.loss_fn = get_loss_fn(loss_fn)
         self.optimizer_fn = OPTIMIZER_DICT[optimizer_fn]
-        self.optimizer_kwargs = optimizer_kwargs 
+        self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs is not None else {}
         self.lr_scheduler_fn = LR_SCHEDULER_DICT[lr_scheduler_fn] if lr_scheduler_fn is not None else None
         self.lr_scheduler_kwargs = lr_scheduler_kwargs
         self.lr_scheduler_interval = lr_scheduler_interval
@@ -450,13 +450,11 @@ class GenericModel(pl.LightningModule):
         
 
 class SolutionMap(GenericModel):
-    def __init__(self, h2h_model_name, h2h_layer_sizes, i2h_layer_sizes, h2o_layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale, H_strength, WS_strength, problem, **kwargs):
+    def __init__(self, problem, h2h_model_name, h2h_layer_sizes, i2h_layer_sizes, h2o_layer_sizes, activation_fn='ELU', activation_kwargs=None, use_bn=False, use_scale=True, H_strength=0., WS_strength=0., **kwargs):
         super(SolutionMap, self).__init__(**kwargs)
         
         self.save_hyperparameters()
         
-        self.H_strength = H_strength 
-        self.WS_strength = WS_strength 
         if problem == 'fpu':
             fpu = FPU()
             self.compute_H = lambda u: fpu.compute_H(u[:, :6], u[:, 6:])
@@ -468,6 +466,11 @@ class SolutionMap(GenericModel):
         else:
             self.compute_H = None 
             self.input_size = None
+            
+        self.H_strength = H_strength 
+        self.WS_strength = WS_strength 
+        if activation_kwargs is None:
+            activation_kwargs = {}
         
         assert h2h_layer_sizes[0] == h2h_layer_sizes[-1]
         self.hidden_size = h2h_layer_sizes[0]
@@ -561,30 +564,32 @@ class SolutionMap(GenericModel):
 
 
 class CorrectionOperator(GenericModel):
-    def __init__(self, model_name, layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale, H_strength, WS_strength, problem, **kwargs):
+    def __init__(self, problem, Delta_t, coarse_h, model_name, layer_sizes, activation_fn='ELU', activation_kwargs=None, use_bn=False, use_scale=True, H_strength=0., WS_strength=0., **kwargs):
         super(CorrectionOperator, self).__init__(**kwargs)
         
         self.save_hyperparameters()
         
-        self.H_strength = H_strength 
-        self.WS_strength = WS_strength 
         self.problem = problem
         if self.problem == 'fpu':
             fpu = FPU()
             self.compute_H = lambda u: fpu.compute_H(u[:, :6], u[:, 6:])
             self.input_size = 12
-            self.coarse_solver = VelocityVerlet(lambda q: fpu.compute_q_ddot(q), 1, 10)
+            self.coarse_solver = VelocityVerlet(lambda q: fpu.compute_q_ddot(q), Delta_t, int(Delta_t//coarse_h))
         elif self.problem == 'lennardjones':
             lj = LennardJones()
             self.compute_H = lambda u: lj.compute_H(u[:, :14]*100., u[:, 14:])
             self.input_size = 28
-            self.coarse_solver = VelocityVerlet(lambda x: lj.compute_x_ddot(x), 5e-4, 10)
+            self.coarse_solver = VelocityVerlet(lambda x: lj.compute_x_ddot(x), Delta_t, int(Delta_t//coarse_h))
         else:
             self.compute_H = None 
             self.input_size = None
         
+        if activation_kwargs is None:
+            activation_kwargs = {} 
         self.model = get_model(model_name, layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale)
-    
+        self.H_strength = H_strength 
+        self.WS_strength = WS_strength 
+        
     def coarse_solve(self, u):
         d = self.input_size // 2
         if self.problem == 'fpu':
