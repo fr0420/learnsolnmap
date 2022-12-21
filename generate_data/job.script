@@ -1,0 +1,11 @@
+PROBLEM=fpu
+DELTAT=1e-1
+H=5e-6
+METHOD=CalvoSanz4
+DATADIR=../data/fpu/mc/Dt1e0_dt1e-1_h5e-6_omega300_v2/sigma0.1/Nchains100_Njumps400_Nsteps4/Dt1e-1
+
+julia generate_targets.jl $PROBLEM $DELTAT $H $METHOD $DATADIR/U0.csv $DATADIR/U1.csv &&
+julia generate_targets.jl $PROBLEM $DELTAT $H $METHOD $DATADIR/U1.csv $DATADIR/U2.csv &&
+julia generate_targets.jl $PROBLEM $DELTAT $H $METHOD $DATADIR/U2.csv $DATADIR/U3.csv &&
+julia generate_targets.jl $PROBLEM $DELTAT $H $METHOD $DATADIR/U3.csv $DATADIR/U4.csv &&
+julia generate_targets.jl $PROBLEM $DELTAT $H $METHOD $DATADIR/U4.csv $DATADIR/U5.csv
