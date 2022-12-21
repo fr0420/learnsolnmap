@@ -6,12 +6,14 @@ println("# workers = 40")
 const problem = ARGS[1];
 const Dt = parse(Float64, ARGS[2]);
 const h = parse(Float64, ARGS[3]);
-const input_file = ARGS[4]
-const output_file = ARGS[5];
+const method = ARGS[4];
+const input_file = ARGS[5]
+const output_file = ARGS[6];
 
 println("problem =     ", problem)
 println("Delta t =     ", Dt)
 println("h =           ", h)
+println("method =      ", method)
 println("input_file =  ", input_file)
 println("output_file = ", output_file)
 
@@ -40,7 +42,12 @@ println("output_file = ", output_file)
     const Dt = $Dt;
     const h = $h;
     
-    phi_Dt(p, q) = ode_solve(A, CalvoSanz4(), p, q, 0.0, Dt, round(Int, Dt/h), false)
+    methods = Dict(
+        "VelocityVerlet"=>VelocityVerlet(), 
+        "CalvoSanz4"=>CalvoSanz4()
+    )
+    
+    phi_Dt(p, q) = ode_solve(A, methods[$method], p, q, 0.0, Dt, round(Int, Dt/h), false)
     
 end
 
