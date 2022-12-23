@@ -450,7 +450,7 @@ class GenericModel(pl.LightningModule):
         
 
 class SolutionMap(GenericModel):
-    def __init__(self, problem, h2h_model_name, h2h_layer_sizes, i2h_layer_sizes, h2o_layer_sizes, activation_fn='ELU', activation_kwargs=None, use_bn=False, use_scale=True, H_strength=0., WS_strength=0., **kwargs):
+    def __init__(self, problem, Delta_t, h2h_model_name, h2h_layer_sizes, i2h_layer_sizes, h2o_layer_sizes, activation_fn='ELU', activation_kwargs=None, use_bn=False, use_scale=True, H_strength=0., WS_strength=0., S_strength=0., **kwargs):
         super(SolutionMap, self).__init__(**kwargs)
         
         self.save_hyperparameters()
@@ -458,17 +458,22 @@ class SolutionMap(GenericModel):
         if problem == 'fpu':
             fpu = FPU()
             self.compute_H = lambda u: fpu.compute_H(u[:, :6], u[:, 6:])
+            self.compute_Lagrangian = lambda u: fpu.compute_Lagrangian(u[:, :6], u[:, 6:])
             self.input_size = 12
         elif problem == 'lennardjones':
             lj = LennardJones()
             self.compute_H = lambda u: lj.compute_H(u[:, :14]*100., u[:, 14:])
+            self.compute_Lagrangian = lambda u: lj.compute_Lagrangian(u[:, :14]*100., u[:, 14:])
             self.input_size = 28
         else:
             self.compute_H = None 
             self.input_size = None
-            
+
+        self.Delta_t = Delta_t
         self.H_strength = H_strength 
         self.WS_strength = WS_strength 
+        self.S_strength = S_strength 
+        
         if activation_kwargs is None:
             activation_kwargs = {}
         
@@ -510,6 +515,7 @@ class SolutionMap(GenericModel):
         losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
         self.weights = self.weights.type_as(losses)
         H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
+        S_losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
         
         u0 = batch[0]
         H0 = self.compute_H(u0)
@@ -523,11 +529,14 @@ class SolutionMap(GenericModel):
                 H_losses[t-1] = self.loss_fn(self.compute_H(ut_pred), H0)
             if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
                 losses[t-1] = self.loss_fn(ut_pred, ut_true)
-        
+            S_losses[t-1] = self.compute_Lagrangian(ut_pred).mean()
+            
         loss = losses @ self.weights
         
         loss_H = H_losses.sum()
 #         loss += self.H_strength * loss_H  # disable H gradient computation for now 
+        
+        loss += self.S_strength * self.Delta_t * S_losses.sum()
         
         if isinstance(self.h2h, HamiltonianReversibleNetwork):
             loss_WS = self.WS_strength * self.h2h.compute_weight_smoothness()
