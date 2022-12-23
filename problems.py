@@ -15,12 +15,15 @@ class LennardJones:
     def LJ_potential(self, r):
         return 4 * self.EPSILON * ((self.SIGMA/r)**(12) - (self.SIGMA/r)**(6))
     
+    def compute_Lagrangian(self, v, x):
+        return self.compute_K(v) - self.compute_U(x)
+    
     def compute_H(self, v, x):
         return self.compute_U(x) + self.compute_K(v)
     
     def compute_U(self, x):
         x_reshaped = x.reshape(shape=(-1, self.Natoms, self.d))
-        pairwise_dist = torch.cdist(x_reshaped, x_reshaped, p=2)
+        pairwise_dist = torch.cdist(x_reshaped.contiguous(), x_reshaped.contiguous(), p=2)
         U = torch.triu(self.LJ_potential(pairwise_dist), diagonal=1).sum(dim=(-2, -1))
         return U 
     
@@ -44,6 +47,9 @@ class FPU:
         self.Omega = 300
         self.C0 = 0.25 * self.Omega**2
     
+    def compute_Lagrangian(self, p, q):
+        return self.compute_K(p) - self.compute_U(q)
+        
     def compute_H(self, p, q):
         return self.compute_U(q) + self.compute_K(p)
     
