@@ -64,8 +64,8 @@ def get_dataset(data_dir, sequence_len):
     data = []
     for fname in filenames: 
         u = pd.read_csv(os.path.join(data_dir, fname)).to_numpy()
-#         v, x = u[:, :14], u[:, 14:]
-#         u = np.concatenate((v/100., x), axis=1)
+        v, x = u[:, :14], u[:, 14:]
+        u = np.concatenate((v/100., x), axis=1)
         data.append(torch.tensor(u))
     ds = TensorDataset(*data)
     return ds
@@ -75,6 +75,7 @@ if __name__ == '__main__':
     
     ap = argparse.ArgumentParser()
     ap.add_argument('--group', default='lennardjones', help='problem name')
+    ap.add_argument('--Delta_t', default=1e-2, type=float, help='Delta t')
     ap.add_argument('--random_seed', default=42, type=int, help='random seed')
     ap.add_argument('--data_dir', default='.', help='data directory')
     ap.add_argument('--batch_size', default=100, type=int, help='batch size')
@@ -82,7 +83,8 @@ if __name__ == '__main__':
     ap.add_argument('--h2h_layer_sizes', default=[1000, 1000], nargs='+', type=int, help='h2h layer sizes')
     ap.add_argument('--i2h_layer_sizes', default=None, nargs='+', type=int, help='i2h layer sizes')
     ap.add_argument('--h2o_layer_sizes', default=None, nargs='+', type=int, help='h2o layer sizes')
-    ap.add_argument('--ws_strength', default=0., type=float, help='weight smoothness regularization strength')
+    ap.add_argument('--WS_strength', default=0., type=float, help='weight smoothness regularization strength')
+    ap.add_argument('--S_strength', default=0., type=float, help='lagrangian regularization strength')
     ap.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     ap.add_argument('--num_epochs', default=1000, type=int, help='number of epochs')
     ap.add_argument('--gpus', default=[0], nargs='+', type=int, help='gpus')
@@ -92,6 +94,7 @@ if __name__ == '__main__':
     # Config dictionary
     CONFIG = dict (
         group = args.group,
+        Delta_t = args.Delta_t,
         seed = args.random_seed,
         train_dir = os.path.join(args.data_dir, 'train'),
         test_dir = os.path.join(args.data_dir, 'test'),
@@ -118,7 +121,8 @@ if __name__ == '__main__':
     #     lr_scheduler_kwargs = {'factor': 0.85, 'patience': 5, 'cooldown': 5},
         lr_scheduler_interval = 'step',
         H_strength = 0.,
-        WS_strength = args.ws_strength,
+        WS_strength = args.WS_strength,
+        S_strength = args.S_strength, 
         sequence_weights = [1, 1, 1, 1, 1],
         sequence_len = 5,
         n1 = 3,
@@ -179,7 +183,9 @@ if __name__ == '__main__':
         lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
         H_strength=CONFIG['H_strength'],
         WS_strength=CONFIG['WS_strength'],
+        S_strength=CONFIG['S_strength'],
         problem=CONFIG['group'],
+        Delta_t=CONFIG['Delta_t'],
     ).double()
 
     # Initialize W&B logger 
