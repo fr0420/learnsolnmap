@@ -529,14 +529,14 @@ class SolutionMap(GenericModel):
                 H_losses[t-1] = self.loss_fn(self.compute_H(ut_pred), H0)
             if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
                 losses[t-1] = self.loss_fn(ut_pred, ut_true)
-            S_losses[t-1] = self.compute_Lagrangian(ut_pred).mean()
+            S_losses[t-1] = self.compute_Lagrangian(ut_pred)
             
         loss = losses @ self.weights
         
         loss_H = H_losses.sum()
 #         loss += self.H_strength * loss_H  # disable H gradient computation for now 
-        
-        loss += self.S_strength * self.Delta_t * S_losses.sum()
+        loss_S = S_losses.sum()
+        loss += self.S_strength * self.Delta_t * loss_S
         
         if isinstance(self.h2h, HamiltonianReversibleNetwork):
             loss_WS = self.WS_strength * self.h2h.compute_weight_smoothness()
@@ -551,6 +551,7 @@ class SolutionMap(GenericModel):
         for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
             metrics[f'loss_step{t+1}'] = l.detach()
         metrics['loss_H'] = loss_H.detach()
+        metrics['loss_S'] = loss_S.detach()
         return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
   
     def _shared_eval_step(self, batch, batch_idx):
