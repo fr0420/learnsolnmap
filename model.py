@@ -401,21 +401,23 @@ class GenericModel(pl.LightningModule):
         self._shared_epoch_end(outputs, 'train')
         
     def validation_step(self, batch, batch_idx):
-        loss, losses = self._shared_eval_step(batch, batch_idx)   
-        metrics = {'loss': loss}
-        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
-            metrics[f'loss_step{t+1}'] = l 
-        return {'batch_size': len(batch[0]), 'metrics': metrics}
-    
+#         loss, losses = self._shared_eval_step(batch, batch_idx)   
+#         metrics = {'loss': loss}
+#         for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
+#             metrics[f'loss_step{t+1}'] = l 
+#         return {'batch_size': len(batch[0]), 'metrics': metrics}
+        return self._shared_eval_step(batch, batch_idx)
+
     def validation_epoch_end(self, outputs):
         self._shared_epoch_end(outputs, 'val')
     
     def test_step(self, batch, batch_idx):
-        loss, losses = self._shared_eval_step(batch, batch_idx)    
-        metrics = {'loss': loss}
-        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
-            metrics[f'loss_step{t+1}'] = l
-        return {'batch_size': len(batch[0]), 'metrics': metrics}
+#         loss, losses = self._shared_eval_step(batch, batch_idx)    
+#         metrics = {'loss': loss}
+#         for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
+#             metrics[f'loss_step{t+1}'] = l
+#         return {'batch_size': len(batch[0]), 'metrics': metrics}
+        return self._shared_eval_step(batch, batch_idx)
     
     def test_epoch_end(self, outputs):
         self._shared_epoch_end(outputs, 'test')
@@ -529,7 +531,7 @@ class SolutionMap(GenericModel):
                 H_losses[t-1] = self.loss_fn(self.compute_H(ut_pred), H0)
             if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
                 losses[t-1] = self.loss_fn(ut_pred, ut_true)
-            S_losses[t-1] = self.compute_Lagrangian(ut_pred)
+            S_losses[t-1] = self.compute_Lagrangian(ut_pred).mean()
             
         loss = losses @ self.weights
         
@@ -557,20 +559,36 @@ class SolutionMap(GenericModel):
     def _shared_eval_step(self, batch, batch_idx):
         losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
         self.weights = self.weights.type_as(losses)
+        H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
+        S_losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
         
         u0 = batch[0]
+        H0 = self.compute_H(u0)
         res = self.forward(u0, self.sequence_len)
         
         for t in range(1, self.sequence_len+1):
             ut_pred = res[t-1]
             ut_true = batch[t]
             
+            if t <= 2: 
+                H_losses[t-1] = self.loss_fn(self.compute_H(ut_pred), H0)
             if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
                 losses[t-1] = self.loss_fn(ut_pred, ut_true)
-        
+            S_losses[t-1] = self.compute_Lagrangian(ut_pred).mean()
+
         loss = losses @ self.weights
         
-        return loss, losses
+        loss_H = H_losses.sum()
+#         loss += self.H_strength * loss_H  # disable H gradient computation for now 
+        loss_S = S_losses.sum()
+        loss += self.S_strength * self.Delta_t * loss_S
+        
+        metrics = {'loss': loss.detach()}
+        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
+            metrics[f'loss_step{t+1}'] = l.detach()
+        metrics['loss_H'] = loss_H.detach()
+        metrics['loss_S'] = loss_S.detach()
+        return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
 
 
 class CorrectionOperator(GenericModel):
