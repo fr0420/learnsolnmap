@@ -63,8 +63,8 @@ def get_dataset(data_dir, sequence_len):
     data = []
     for fname in filenames: 
         u = pd.read_csv(os.path.join(data_dir, fname)).to_numpy()
-#         v, x = u[:, :14], u[:, 14:]
-#         u = np.concatenate((v/100., x), axis=1)
+    #    v, x = u[:, :14], u[:, 14:]
+    #    u = np.concatenate((v/100., x), axis=1)
         data.append(torch.tensor(u))
     ds = TensorDataset(*data)
     return ds
@@ -75,6 +75,8 @@ if __name__ == '__main__':
     
     ap = argparse.ArgumentParser()
     ap.add_argument('--group', default='lennardjones', help='problem name')
+    ap.add_argument('--Delta_t', default=1e-4, type=float, help='Delta t')
+    ap.add_argument('--coarse_h', default=1e-4, type=float, help='coarse h')
     ap.add_argument('--random_seed', default=42, type=int, help='random seed')
     ap.add_argument('--data_dir', default='.', help='data directory')
     ap.add_argument('--batch_size', default=100, type=int, help='batch size')
@@ -83,12 +85,17 @@ if __name__ == '__main__':
     ap.add_argument('--ws_strength', default=0., type=float, help='weight smoothness regularization strength')
     ap.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     ap.add_argument('--num_epochs', default=1000, type=int, help='number of epochs')
+    ap.add_argument('--sequence_weights', default=[1, 1, 1, 1, 1], nargs='+', type=int, help='sequence weights')
     ap.add_argument('--gpus', default=[0], nargs='+', type=int, help='gpus')
+    ap.add_argument('--resume_from_ckpt', default=None, help='resume from checkpoint')
+    ap.add_argument('--init_model_ckpt', default=None, help='initialize model with checkpoint')
     args = ap.parse_args()
     
     # Config dictionary
     CONFIG = dict (
         group = args.group,
+        Delta_t = args.Delta_t,
+        coarse_h = args.coarse_h,
         seed = args.random_seed,
         train_dir = os.path.join(args.data_dir, 'train'),
         test_dir = os.path.join(args.data_dir, 'test'),
@@ -114,8 +121,8 @@ if __name__ == '__main__':
         lr_scheduler_interval = 'step',
         H_strength = 0.,
         WS_strength = args.ws_strength,
-        sequence_weights = [1, 0, 0, 0, 0],
-        sequence_len = 5,
+        sequence_weights = args.sequence_weights,
+        sequence_len = len(args.sequence_weights),
 #         n1 = 3,
 #         n2 = 2,
         gpus = args.gpus,
@@ -156,27 +163,46 @@ if __name__ == '__main__':
     # randomized_seq_weights = RandomizedSequenceWeights(sequence_len=CONFIG['sequence_len'], n1=CONFIG['n1'], n2=CONFIG['n2'])
 
     # Initialize model 
-    lit_model = CorrectionOperator(
-        model_name=CONFIG['model'],
-        layer_sizes=CONFIG['layer_sizes'], 
-        activation_fn=CONFIG['activation_fn'],
-        activation_kwargs=CONFIG['activation_kwargs'],
-        use_bn=CONFIG['use_bn'],
-        use_scale=CONFIG['use_scale'],
-        loss_fn=CONFIG['loss_fn'],
-        optimizer_fn=CONFIG['optimizer_fn'],
-        optimizer_kwargs=CONFIG['optimizer_kwargs'],
-        lr_scheduler_fn=CONFIG['lr_scheduler_fn'],
-        lr_scheduler_kwargs=CONFIG['lr_scheduler_kwargs'],
-        lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
-        H_strength=CONFIG['H_strength'],
-        WS_strength=CONFIG['WS_strength'],
-        problem=CONFIG['group'],
-    ).double()
+    if args.init_model_ckpt is not None:
+        lit_model = CorrectionOperator.load_from_checkpoint(args.init_model_ckpt,
+            loss_fn=CONFIG['loss_fn'],
+            optimizer_fn=CONFIG['optimizer_fn'],
+            optimizer_kwargs=CONFIG['optimizer_kwargs'],
+            lr_scheduler_fn=CONFIG['lr_scheduler_fn'],
+            lr_scheduler_kwargs=CONFIG['lr_scheduler_kwargs'],
+            lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
+            H_strength=CONFIG['H_strength'],
+            WS_strength=CONFIG['WS_strength']
+        ).double()    
+    else:
+        lit_model = CorrectionOperator(
+            model_name=CONFIG['model'],
+            layer_sizes=CONFIG['layer_sizes'], 
+            activation_fn=CONFIG['activation_fn'],
+            activation_kwargs=CONFIG['activation_kwargs'],
+            use_bn=CONFIG['use_bn'],
+            use_scale=CONFIG['use_scale'],
+            loss_fn=CONFIG['loss_fn'],
+            optimizer_fn=CONFIG['optimizer_fn'],
+            optimizer_kwargs=CONFIG['optimizer_kwargs'],
+            lr_scheduler_fn=CONFIG['lr_scheduler_fn'],
+            lr_scheduler_kwargs=CONFIG['lr_scheduler_kwargs'],
+            lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
+            H_strength=CONFIG['H_strength'],
+            WS_strength=CONFIG['WS_strength'],
+            problem=CONFIG['group'],
+            Delta_t=CONFIG['Delta_t'],
+            coarse_h=CONFIG['coarse_h'],
+        ).double()
 
-    # Initialize W&B logger 
-    current_time = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-    wandb_logger = WandbLogger(name=current_time, project='solutionmap', group=CONFIG['group'], version=0, config=CONFIG)
+    
+    # Initialize W&B logger
+    if args.resume_from_ckpt is not None:
+        id = args.resume_from_ckpt.split('/')[-3]
+        wandb_logger = WandbLogger(project='solutionmap', group=CONFIG['group'], id=id, resume='must')
+    else:
+        current_time = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+        wandb_logger = WandbLogger(name=current_time, project='solutionmap', group=CONFIG['group'], version=0, config=CONFIG)
 
     # Initialize trainer
     trainer = pl.Trainer(
@@ -189,14 +215,16 @@ if __name__ == '__main__':
     #                randomized_seq_weights,
                    lr_monitor, 
                    checkpoint_callback
-                  ], 
+             ], 
     )
-
     # Log gradients and model topology
-    wandb_logger.watch(lit_model, log='all')
+    wandb_logger.watch(lit_model, log='all', log_freq=500)
 
     # Fit data 
-    trainer.fit(lit_model, train_loader, test_loader)
+    if args.resume_from_ckpt is not None:
+        trainer.fit(lit_model, train_loader, test_loader, ckpt_path=args.resume_from_ckpt)
+    else:
+        trainer.fit(lit_model, train_loader, test_loader)
 
     print("Best model saved to:\n", checkpoint_callback.best_model_path)
 

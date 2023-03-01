@@ -64,8 +64,8 @@ def get_dataset(data_dir, sequence_len):
     data = []
     for fname in filenames: 
         u = pd.read_csv(os.path.join(data_dir, fname)).to_numpy()
-        v, x = u[:, :14], u[:, 14:]
-        u = np.concatenate((v/100., x), axis=1)
+      #  v, x = u[:, :14], u[:, 14:]
+      #  u = np.concatenate((v/100., x), axis=1)
         data.append(torch.tensor(u))
     ds = TensorDataset(*data)
     return ds
@@ -83,12 +83,14 @@ if __name__ == '__main__':
     ap.add_argument('--h2h_layer_sizes', default=[1000, 1000], nargs='+', type=int, help='h2h layer sizes')
     ap.add_argument('--i2h_layer_sizes', default=None, nargs='+', type=int, help='i2h layer sizes')
     ap.add_argument('--h2o_layer_sizes', default=None, nargs='+', type=int, help='h2o layer sizes')
+    ap.add_argument('--sequence_weights', default=[1, 1, 1, 1, 1], nargs='+', type=int, help='sequence weights')
     ap.add_argument('--WS_strength', default=0., type=float, help='weight smoothness regularization strength')
     ap.add_argument('--S_strength', default=0., type=float, help='lagrangian regularization strength')
     ap.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     ap.add_argument('--num_epochs', default=1000, type=int, help='number of epochs')
     ap.add_argument('--gpus', default=[0], nargs='+', type=int, help='gpus')
     ap.add_argument('--resume_from_ckpt', default=None, help='resume from checkpoint')
+    ap.add_argument('--init_model_ckpt', default=None, help'initialize model with checkpoint')
     args = ap.parse_args()
     
     # Config dictionary
@@ -123,8 +125,8 @@ if __name__ == '__main__':
         H_strength = 0.,
         WS_strength = args.WS_strength,
         S_strength = args.S_strength, 
-        sequence_weights = [1, 1, 1, 1, 1],
-        sequence_len = 5,
+        sequence_weights = args.sequence_weights,
+        sequence_len = len(args.sequence_weights),
         n1 = 3,
         n2 = 2,
         gpus = args.gpus,
@@ -166,27 +168,40 @@ if __name__ == '__main__':
 
 
     # Initialize model 
-    lit_model = SolutionMap(
-        h2h_model_name=CONFIG['h2h_model'],
-        h2h_layer_sizes=CONFIG['h2h_layer_sizes'], 
-        i2h_layer_sizes=CONFIG['i2h_layer_sizes'], 
-        h2o_layer_sizes=CONFIG['h2o_layer_sizes'], 
-        activation_fn=CONFIG['activation_fn'],
-        activation_kwargs=CONFIG['activation_kwargs'],
-        use_bn=CONFIG['use_bn'],
-        use_scale=CONFIG['use_scale'],
-        loss_fn=CONFIG['loss_fn'],
-        optimizer_fn=CONFIG['optimizer_fn'],
-        optimizer_kwargs=CONFIG['optimizer_kwargs'],
-        lr_scheduler_fn=CONFIG['lr_scheduler_fn'],
-        lr_scheduler_kwargs=CONFIG['lr_scheduler_kwargs'],
-        lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
-        H_strength=CONFIG['H_strength'],
-        WS_strength=CONFIG['WS_strength'],
-        S_strength=CONFIG['S_strength'],
-        problem=CONFIG['group'],
-        Delta_t=CONFIG['Delta_t'],
-    ).double()
+    if args.init_model_ckpt is not None:
+        lit_model = SolutionMap.load_from_checkpoint(args.init_model_ckpt,
+            loss_fn=CONFIG['loss_fn'],
+            optimizer_fn=CONFIG['optimizer_fn'],
+            optimizer_kwargs=CONFIG['optimizer_kwargs'],
+            lr_scheduler_fn=CONFIG['lr_scheduler_fn'],
+            lr_scheduler_kwargs=CONFIG['lr_scheduler_kwargs'],
+            lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
+            H_strength=CONFIG['H_strength'],
+            WS_strength=CONFIG['WS_strength'],
+            S_strength=CONFIG['S_strength'],
+        ).double()
+    else:
+        lit_model = SolutionMap(
+            h2h_model_name=CONFIG['h2h_model'],
+            h2h_layer_sizes=CONFIG['h2h_layer_sizes'], 
+            i2h_layer_sizes=CONFIG['i2h_layer_sizes'], 
+            h2o_layer_sizes=CONFIG['h2o_layer_sizes'], 
+            activation_fn=CONFIG['activation_fn'],
+            activation_kwargs=CONFIG['activation_kwargs'],
+            use_bn=CONFIG['use_bn'],
+            use_scale=CONFIG['use_scale'],
+            loss_fn=CONFIG['loss_fn'],
+            optimizer_fn=CONFIG['optimizer_fn'],
+            optimizer_kwargs=CONFIG['optimizer_kwargs'],
+            lr_scheduler_fn=CONFIG['lr_scheduler_fn'],
+            lr_scheduler_kwargs=CONFIG['lr_scheduler_kwargs'],
+            lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
+            H_strength=CONFIG['H_strength'],
+            WS_strength=CONFIG['WS_strength'],
+            S_strength=CONFIG['S_strength'],
+            problem=CONFIG['group'],
+            Delta_t=CONFIG['Delta_t'],
+        ).double()
 
     # Initialize W&B logger 
     if args.resume_from_ckpt is not None: 
