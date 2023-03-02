@@ -652,3 +652,58 @@ class CorrectionOperator(SolutionMapBase):
             u = self.forward(u)
             res.append(u)
         return res
+    
+    
+class CorrectionOperator2(SolutionMapBase):
+    def __init__(self, Delta_t, coarse_h, model_name, layer_sizes, problem, problem_kwargs=None, activation_fn='ELU', activation_kwargs=None, use_bn=False, use_scale=True, **kwargs):
+        super(CorrectionOperator2, self).__init__(**kwargs)
+        
+        self.save_hyperparameters()
+        
+        self.problem = problem
+        if problem_kwargs is None:
+            problem_kwargs = {}
+            
+        if self.problem == 'fpu':
+            fpu = FPU(**problem_kwargs)
+            self.compute_H = lambda u: fpu.compute_H(u[:, :6], u[:, 6:])
+            self.compute_Lagrangian = lambda u: fpu.compute_Lagrangian(u[:, :6], u[:, 6:])
+            self.input_size = 12
+            self.coarse_solver = VelocityVerlet(lambda q: fpu.compute_q_ddot(q), Delta_t, int(Delta_t//coarse_h))
+        elif self.problem == 'lennardjones':
+            lj = LennardJones(**problem_kwargs)
+            self.compute_H = lambda u: lj.compute_H(u[:, :14]*100., u[:, 14:])
+            self.compute_Lagrangian = lambda u: lj.compute_Lagrangian(u[:, :14]*100., u[:, 14:])
+            self.input_size = 28
+            self.coarse_solver = VelocityVerlet(lambda x: lj.compute_x_ddot(x), Delta_t, int(Delta_t//coarse_h))
+        else:
+            self.compute_H = None 
+            self.input_size = None
+        
+        if activation_kwargs is None:
+            activation_kwargs = {} 
+        self.model = get_model(model_name, layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale)
+        
+        self.Delta_t = Delta_t
+        
+    def coarse_solve(self, u):
+        d = self.input_size // 2
+        if self.problem == 'fpu':
+            return torch.cat(self.coarse_solver.solve(u[:, :d], u[:, d:]), dim=1)
+        elif self.problem == 'lennardjones':
+            v, x = self.coarse_solver.solve(u[:, :d]*100., u[:, d:])
+            return torch.cat((v/100., x), dim=1)
+        else: 
+            pass 
+        
+    def forward(self, u):
+        u_c = self.coarse_solve(u)
+        return u_c + self.model(u_c)
+    
+    def get_sequence_predictions(self, u0, sequence_len):
+        res = []
+        u = u0 
+        for _ in range(sequence_len):
+            u = self.forward(u)
+            res.append(u)
+        return res
