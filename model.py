@@ -386,14 +386,7 @@ class GenericModel(pl.LightningModule):
         self.lr_scheduler_fn = LR_SCHEDULER_DICT[lr_scheduler_fn] if lr_scheduler_fn is not None else None
         self.lr_scheduler_kwargs = lr_scheduler_kwargs
         self.lr_scheduler_interval = lr_scheduler_interval
-        
-        self.sequence_len = 1
-        self.weights = None
-    
-    def set_sequence_weights(self, weights):
-        self.weights = weights 
-        self.sequence_len = len(weights)
-          
+
     def training_step(self, batch, batch_idx):
         pass
         
@@ -401,22 +394,12 @@ class GenericModel(pl.LightningModule):
         self._shared_epoch_end(outputs, 'train')
         
     def validation_step(self, batch, batch_idx):
-#         loss, losses = self._shared_eval_step(batch, batch_idx)   
-#         metrics = {'loss': loss}
-#         for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
-#             metrics[f'loss_step{t+1}'] = l 
-#         return {'batch_size': len(batch[0]), 'metrics': metrics}
         return self._shared_eval_step(batch, batch_idx)
 
     def validation_epoch_end(self, outputs):
         self._shared_epoch_end(outputs, 'val')
     
     def test_step(self, batch, batch_idx):
-#         loss, losses = self._shared_eval_step(batch, batch_idx)    
-#         metrics = {'loss': loss}
-#         for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
-#             metrics[f'loss_step{t+1}'] = l
-#         return {'batch_size': len(batch[0]), 'metrics': metrics}
         return self._shared_eval_step(batch, batch_idx)
     
     def test_epoch_end(self, outputs):
@@ -449,21 +432,121 @@ class GenericModel(pl.LightningModule):
             return {'optimizer': optimizer, 'lr_scheduler': lr_scheduler}
         else:
             return optimizer
-        
 
-class SolutionMap(GenericModel):
-    def __init__(self, problem, Delta_t, h2h_model_name, h2h_layer_sizes, i2h_layer_sizes, h2o_layer_sizes, activation_fn='ELU', activation_kwargs=None, use_bn=False, use_scale=True, H_strength=0., WS_strength=0., S_strength=0., **kwargs):
+
+class SolutionMapBase(GenericModel):
+    def __init__(self, H_strength=0., WS_strength=0., S_strength=0., **kwargs):
+        super(SolutionMapBase, self).__init__(**kwargs)
+            
+        self.sequence_len = 1
+        self.weights = None
+        
+        self.compute_H = None 
+        self.H_strength = H_strength 
+        self.WS_strength = WS_strength 
+        self.S_strength = S_strength 
+        
+    def set_sequence_weights(self, weights):
+        self.weights = weights 
+        self.sequence_len = len(weights)
+    
+    def get_sequence_predictions(self, u0, sequence_len):
+        pass 
+        
+    def training_step(self, batch, batch_idx):
+        losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
+        self.weights = self.weights.type_as(losses)
+        H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
+        S_losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
+        
+        u0 = batch[0]
+        H0 = self.compute_H(u0)
+        res = self.get_sequence_predictions(u0, self.sequence_len)
+        
+        for t in range(1, self.sequence_len+1):
+            ut_pred = res[t-1]
+            ut_true = batch[t]
+            
+            if t <= 2: 
+                H_losses[t-1] = self.loss_fn(self.compute_H(ut_pred), H0)
+            if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
+                losses[t-1] = self.loss_fn(ut_pred, ut_true)
+            S_losses[t-1] = self.compute_Lagrangian(ut_pred).mean()
+            
+        loss = losses @ self.weights
+        
+        loss_H = H_losses.sum()
+#         loss += self.H_strength * loss_H  # disable H gradient computation for now 
+        loss_S = S_losses.sum()
+        loss += self.S_strength * self.Delta_t * loss_S
+        
+#         if isinstance(self.h2h, HamiltonianReversibleNetwork):
+#             loss_WS = self.WS_strength * self.h2h.compute_weight_smoothness()
+#             loss += loss_WS
+            
+#         d = torch.stack([torch.det(torch.autograd.functional.jacobian(self, u0, create_graph=True)) for u0 in batch[0]])
+#         loss_d = torch.mean((d-1)**2)
+#         loss += loss_d
+        
+        self.log('step_loss', loss, on_step=True, on_epoch=False, prog_bar=True)
+        metrics = {'loss': loss.detach()}
+        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
+            metrics[f'loss_step{t+1}'] = l.detach()
+        metrics['loss_H'] = loss_H.detach()
+        metrics['loss_S'] = loss_S.detach()
+        return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
+  
+    def _shared_eval_step(self, batch, batch_idx):
+        losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
+        self.weights = self.weights.type_as(losses)
+        H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
+        S_losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
+        
+        u0 = batch[0]
+        H0 = self.compute_H(u0)
+        res = self.get_sequence_predictions(u0, self.sequence_len)
+        
+        for t in range(1, self.sequence_len+1):
+            ut_pred = res[t-1]
+            ut_true = batch[t]
+            
+            if t <= 2: 
+                H_losses[t-1] = self.loss_fn(self.compute_H(ut_pred), H0)
+            if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
+                losses[t-1] = self.loss_fn(ut_pred, ut_true)
+            S_losses[t-1] = self.compute_Lagrangian(ut_pred).mean()
+
+        loss = losses @ self.weights
+        
+        loss_H = H_losses.sum()
+#         loss += self.H_strength * loss_H  # disable H gradient computation for now 
+        loss_S = S_losses.sum()
+        loss += self.S_strength * self.Delta_t * loss_S
+        
+        metrics = {'loss': loss.detach()}
+        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
+            metrics[f'loss_step{t+1}'] = l.detach()
+        metrics['loss_H'] = loss_H.detach()
+        metrics['loss_S'] = loss_S.detach()
+        return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
+
+    
+class SolutionMap(SolutionMapBase):
+    def __init__(self, Delta_t, h2h_model_name, h2h_layer_sizes, i2h_layer_sizes, h2o_layer_sizes, problem, problem_kwargs=None, activation_fn='ELU', activation_kwargs=None, use_bn=False, use_scale=True, **kwargs):
         super(SolutionMap, self).__init__(**kwargs)
         
         self.save_hyperparameters()
         
+        if problem_kwargs is None:
+            problem_kwargs = {}
+            
         if problem == 'fpu':
-            fpu = FPU()
+            fpu = FPU(**problem_kwargs)
             self.compute_H = lambda u: fpu.compute_H(u[:, :6], u[:, 6:])
             self.compute_Lagrangian = lambda u: fpu.compute_Lagrangian(u[:, :6], u[:, 6:])
             self.input_size = 12
         elif problem == 'lennardjones':
-            lj = LennardJones()
+            lj = LennardJones(**problem_kwargs)
             self.compute_H = lambda u: lj.compute_H(u[:, :14]*100., u[:, 14:])
             self.compute_Lagrangian = lambda u: lj.compute_Lagrangian(u[:, :14]*100., u[:, 14:])
             self.input_size = 28
@@ -472,9 +555,6 @@ class SolutionMap(GenericModel):
             self.input_size = None
 
         self.Delta_t = Delta_t
-        self.H_strength = H_strength 
-        self.WS_strength = WS_strength 
-        self.S_strength = S_strength 
         
         if activation_kwargs is None:
             activation_kwargs = {}
@@ -505,107 +585,41 @@ class SolutionMap(GenericModel):
             self.h2o = nn.Linear(self.hidden_size, self.input_size, bias=False)
             self.h2o.weight = nn.Parameter(W.T, requires_grad=False)
         
-    def forward(self, x, sequence_len):
+    def forward(self, u):
+        u = self.i2h(u)
+        u = self.h2h(u)
+        u = self.h2o(u)
+        return u
+    
+    def get_sequence_predictions(self, u0, sequence_len):
         res = []
-        hidden = self.i2h(x)
-        for i in range(sequence_len):
+        hidden = self.i2h(u0)
+        for _ in range(sequence_len):
             hidden = self.h2h(hidden)
             res.append(self.h2o(hidden))
         return res
-        
-    def training_step(self, batch, batch_idx):
-        losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
-        self.weights = self.weights.type_as(losses)
-        H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
-        S_losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
-        
-        u0 = batch[0]
-        H0 = self.compute_H(u0)
-        res = self.forward(u0, self.sequence_len)
-        
-        for t in range(1, self.sequence_len+1):
-            ut_pred = res[t-1]
-            ut_true = batch[t]
-            
-            if t <= 2: 
-                H_losses[t-1] = self.loss_fn(self.compute_H(ut_pred), H0)
-            if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
-                losses[t-1] = self.loss_fn(ut_pred, ut_true)
-            S_losses[t-1] = self.compute_Lagrangian(ut_pred).mean()
-            
-        loss = losses @ self.weights
-        
-        loss_H = H_losses.sum()
-#         loss += self.H_strength * loss_H  # disable H gradient computation for now 
-        loss_S = S_losses.sum()
-        loss += self.S_strength * self.Delta_t * loss_S
-        
-        if isinstance(self.h2h, HamiltonianReversibleNetwork):
-            loss_WS = self.WS_strength * self.h2h.compute_weight_smoothness()
-            loss += loss_WS
-            
-#         d = torch.stack([torch.det(torch.autograd.functional.jacobian(self, u0, create_graph=True)) for u0 in batch[0]])
-#         loss_d = torch.mean((d-1)**2)
-#         loss += loss_d
-        
-        self.log('step_loss', loss, on_step=True, on_epoch=False, prog_bar=True)
-        metrics = {'loss': loss.detach()}
-        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
-            metrics[f'loss_step{t+1}'] = l.detach()
-        metrics['loss_H'] = loss_H.detach()
-        metrics['loss_S'] = loss_S.detach()
-        return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
-  
-    def _shared_eval_step(self, batch, batch_idx):
-        losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
-        self.weights = self.weights.type_as(losses)
-        H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
-        S_losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
-        
-        u0 = batch[0]
-        H0 = self.compute_H(u0)
-        res = self.forward(u0, self.sequence_len)
-        
-        for t in range(1, self.sequence_len+1):
-            ut_pred = res[t-1]
-            ut_true = batch[t]
-            
-            if t <= 2: 
-                H_losses[t-1] = self.loss_fn(self.compute_H(ut_pred), H0)
-            if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
-                losses[t-1] = self.loss_fn(ut_pred, ut_true)
-            S_losses[t-1] = self.compute_Lagrangian(ut_pred).mean()
-
-        loss = losses @ self.weights
-        
-        loss_H = H_losses.sum()
-#         loss += self.H_strength * loss_H  # disable H gradient computation for now 
-        loss_S = S_losses.sum()
-        loss += self.S_strength * self.Delta_t * loss_S
-        
-        metrics = {'loss': loss.detach()}
-        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
-            metrics[f'loss_step{t+1}'] = l.detach()
-        metrics['loss_H'] = loss_H.detach()
-        metrics['loss_S'] = loss_S.detach()
-        return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
 
 
-class CorrectionOperator(GenericModel):
-    def __init__(self, problem, Delta_t, coarse_h, model_name, layer_sizes, activation_fn='ELU', activation_kwargs=None, use_bn=False, use_scale=True, H_strength=0., WS_strength=0., **kwargs):
+class CorrectionOperator(SolutionMapBase):
+    def __init__(self, Delta_t, coarse_h, model_name, layer_sizes, problem, problem_kwargs=None, activation_fn='ELU', activation_kwargs=None, use_bn=False, use_scale=True, **kwargs):
         super(CorrectionOperator, self).__init__(**kwargs)
         
         self.save_hyperparameters()
         
         self.problem = problem
+        if problem_kwargs is None:
+            problem_kwargs = {}
+            
         if self.problem == 'fpu':
-            fpu = FPU()
+            fpu = FPU(**problem_kwargs)
             self.compute_H = lambda u: fpu.compute_H(u[:, :6], u[:, 6:])
+            self.compute_Lagrangian = lambda u: fpu.compute_Lagrangian(u[:, :6], u[:, 6:])
             self.input_size = 12
             self.coarse_solver = VelocityVerlet(lambda q: fpu.compute_q_ddot(q), Delta_t, int(Delta_t//coarse_h))
         elif self.problem == 'lennardjones':
-            lj = LennardJones()
+            lj = LennardJones(**problem_kwargs)
             self.compute_H = lambda u: lj.compute_H(u[:, :14]*100., u[:, 14:])
+            self.compute_Lagrangian = lambda u: lj.compute_Lagrangian(u[:, :14]*100., u[:, 14:])
             self.input_size = 28
             self.coarse_solver = VelocityVerlet(lambda x: lj.compute_x_ddot(x), Delta_t, int(Delta_t//coarse_h))
         else:
@@ -615,8 +629,8 @@ class CorrectionOperator(GenericModel):
         if activation_kwargs is None:
             activation_kwargs = {} 
         self.model = get_model(model_name, layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale)
-        self.H_strength = H_strength 
-        self.WS_strength = WS_strength 
+        
+        self.Delta_t = Delta_t
         
     def coarse_solve(self, u):
         d = self.input_size // 2
@@ -628,54 +642,13 @@ class CorrectionOperator(GenericModel):
         else: 
             pass 
         
-    def forward(self, x):
-        return self.model(self.coarse_solve(x))
-        
-    def training_step(self, batch, batch_idx):
-         
-        losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
-        self.weights = self.weights.type_as(losses)
-        H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
-        
-        u = batch[0]
-        H = self.compute_H(u)
-            
-        for t in range(1, self.sequence_len+1):
-            u = self.forward(u)
-            if t <= 2: 
-                H_losses[t-1] = self.loss_fn(self.compute_H(u), H)
-            if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
-                losses[t-1] = self.loss_fn(u, batch[t])
-        
-        loss = losses @ self.weights
-        
-        loss_H = H_losses.sum()
-#         loss += self.H_strength * loss_H  # disable H gradient computation for now 
-        
-        if isinstance(self.model, HamiltonianReversibleNetwork):
-            loss_WS = self.WS_strength * self.model.compute_weight_smoothness()
-            loss += loss_WS
-        
-        self.log('step_loss', loss, on_step=True, on_epoch=False, prog_bar=True)
-        metrics = {'loss': loss.detach()}
-        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
-            metrics[f'loss_step{t+1}'] = l.detach()
-        metrics['loss_H'] = loss_H.detach()
-        return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
-  
-    def _shared_eval_step(self, batch, batch_idx):
-        
-        losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
-        self.weights = self.weights.type_as(losses)
-        
-        u = batch[0]
-        
-        for t in range(1, self.sequence_len+1):
-            u = self.forward(u)
-            if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
-                losses[t-1] = self.loss_fn(u, batch[t])
-        
-        loss = losses @ self.weights
-        
-        return loss, losses
+    def forward(self, u):
+        return self.model(self.coarse_solve(u))
     
+    def get_sequence_predictions(self, u0, sequence_len):
+        res = []
+        u = u0 
+        for _ in range(sequence_len):
+            u = self.forward(u)
+            res.append(u)
+        return res
