@@ -43,8 +43,8 @@ class LennardJones:
     
     
 class FPU:
-    def __init__(self):
-        self.Omega = 300
+    def __init__(self, Omega=300):
+        self.Omega = Omega
         self.C0 = 0.25 * self.Omega**2
     
     def compute_Lagrangian(self, p, q):
