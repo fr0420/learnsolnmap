@@ -346,7 +346,7 @@ class SolutionMapBase(GenericModel):
             ut_true = batch[t]
             
             if t <= 2: 
-                H_losses[t-1] = self.loss_fn(self.compute_H(ut_pred), H0)
+                H_losses[t-1] = nn.functional.mse_loss(self.compute_H(ut_pred), H0)
             if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
                 losses[t-1] = self.loss_fn(ut_pred, ut_true)
             S_losses[t-1] = self.compute_Lagrangian(ut_pred).mean()
@@ -389,7 +389,7 @@ class SolutionMapBase(GenericModel):
             ut_true = batch[t]
             
             if t <= 2: 
-                H_losses[t-1] = self.loss_fn(self.compute_H(ut_pred), H0)
+                H_losses[t-1] = nn.functional.mse_loss(self.compute_H(ut_pred), H0)
             if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
                 losses[t-1] = self.loss_fn(ut_pred, ut_true)
             S_losses[t-1] = self.compute_Lagrangian(ut_pred).mean()
