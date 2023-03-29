@@ -6,6 +6,18 @@ from problems import FPU, LennardJones
 from solvers import VelocityVerlet
 
 
+class WeightedMSELoss(nn.Module):
+    """Weighted MSE loss"""
+    
+    def __init__(self, weights, reduction='mean'):
+        super().__init__()
+        self.weights = weights
+        self.reduction = reduction
+    
+    def forward(self, input, target):
+        return nn.functional.mse_loss(self.weights*input, self.weights*target, reduction=self.reduction)
+    
+    
 ACTIVATION_DICT = {
     'ELU': nn.ELU,
     'Hardshrink': nn.Hardshrink,
@@ -33,7 +45,8 @@ ACTIVATION_DICT = {
 }
 
 LOSS_FN_DICT = {
-    'MSELoss': nn.MSELoss()
+    'MSELoss': nn.MSELoss,
+    'WeightedMSELoss': WeightedMSELoss,
 }
 
 OPTIMIZER_DICT = {
@@ -44,6 +57,7 @@ OPTIMIZER_DICT = {
     'Adagrad': optim.Adagrad, 
     'SparseAdam': optim.SparseAdam,
     'Adamax': optim.Adamax,
+#     'NAdam': optim.NAdam,
     'ASGD': optim.ASGD,
     'LBFGS': optim.LBFGS,
     'RMSprop': optim.RMSprop,
@@ -208,10 +222,10 @@ def get_activation(activation_fn, **kwargs):
     return ACTIVATION_DICT[activation_fn](**kwargs)
 
 
-def get_loss_fn(loss_fn):
+def get_loss_fn(loss_fn, **kwargs):
     """Define loss function"""
     
-    return LOSS_FN_DICT[loss_fn]
+    return LOSS_FN_DICT[loss_fn](**kwargs)
 
 
 def get_model(model_name, layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale):
@@ -238,149 +252,13 @@ def get_orthonormal_columns(m, n):
     
     
 NSTEPS_TO_EVAL = 10
-        
-        
-class LitModel(pl.LightningModule):
-    def __init__(self, model_name, layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale, loss_fn, optimizer_fn, optimizer_kwargs, lr_scheduler_fn, lr_scheduler_kwargs, lr_scheduler_interval, H_strength, WS_strength, problem):
-        super(LitModel, self).__init__()
-        
-        self.save_hyperparameters()
-        
-        self.model = get_model(model_name, layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale)
-        self.loss_fn = get_loss_fn(loss_fn)
-        self.optimizer_fn = OPTIMIZER_DICT[optimizer_fn]
-        self.optimizer_kwargs = optimizer_kwargs 
-        self.lr_scheduler_fn = LR_SCHEDULER_DICT[lr_scheduler_fn] if lr_scheduler_fn is not None else None
-        self.lr_scheduler_kwargs = lr_scheduler_kwargs
-        self.lr_scheduler_interval = lr_scheduler_interval
-        
-        self.H_strength = H_strength 
-        if problem == 'fpu':
-            fpu = FPU()
-            self.compute_H = lambda u: fpu.compute_H(u[:, :6], u[:, 6:])
-        elif problem == 'lennardjones':
-            lj = LennardJones()
-            self.compute_H = lambda u: lj.compute_H(u[:, :14]*100., u[:, 14:])
-        else:
-            self.compute_H = None 
-        
-        self.WS_strength = WS_strength 
-        self.sequence_len = 1
-        self.weights = None
-    
-    def set_sequence_weights(self, weights):
-        self.weights = weights 
-        self.sequence_len = len(weights)
-        
-    def forward(self, x):
-        return self.model(x)
-        
-    def training_step(self, batch, batch_idx):
-        losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
-        self.weights = self.weights.type_as(losses)
-        H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
-        
-        u = batch[0]
-        H = self.compute_H(u)
-            
-        for t in range(1, self.sequence_len+1):
-            u = self.forward(u)
-            if t <= 2: 
-                H_losses[t-1] = self.loss_fn(self.compute_H(u), H)
-            if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
-                losses[t-1] = self.loss_fn(u, batch[t])
-        
-        loss = losses @ self.weights
-        
-        loss_H = H_losses.sum()
-#         loss += self.H_strength * loss_H  # disable H gradient computation for now 
-        
-        if isinstance(self.model, HamiltonianReversibleNetwork):
-            loss_WS = self.WS_strength * self.model.compute_weight_smoothness()
-            loss += loss_WS
-            
-#         d = torch.stack([torch.det(torch.autograd.functional.jacobian(self, u0, create_graph=True)) for u0 in batch[0]])
-#         loss_d = torch.mean((d-1)**2)
-#         loss += loss_d
-        
-        self.log('step_loss', loss, on_step=True, on_epoch=False, prog_bar=True)
-        metrics = {'loss': loss.detach()}
-        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
-            metrics[f'loss_step{t+1}'] = l.detach()
-        metrics['loss_H'] = loss_H.detach()
-        return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
-  
-    def training_epoch_end(self, outputs):
-        self._shared_epoch_end(outputs, 'train')
-        
-    def validation_step(self, batch, batch_idx):
-        loss, losses = self._shared_eval_step(batch, batch_idx)   
-        metrics = {'loss': loss}
-        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
-            metrics[f'loss_step{t+1}'] = l 
-        return {'batch_size': len(batch[0]), 'metrics': metrics}
-    
-    def validation_epoch_end(self, outputs):
-        self._shared_epoch_end(outputs, 'val')
-    
-    def test_step(self, batch, batch_idx):
-        loss, losses = self._shared_eval_step(batch, batch_idx)    
-        metrics = {'loss': loss}
-        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
-            metrics[f'loss_step{t+1}'] = l
-        return {'batch_size': len(batch[0]), 'metrics': metrics}
-    
-    def test_epoch_end(self, outputs):
-        self._shared_epoch_end(outputs, 'test')
-        
-    def _shared_eval_step(self, batch, batch_idx):
-        losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
-        self.weights = self.weights.type_as(losses)
-        
-        u = batch[0]
-        
-        for t in range(1, self.sequence_len+1):
-            u = self.forward(u)
-            if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
-                losses[t-1] = self.loss_fn(u, batch[t])
-        
-        loss = losses @ self.weights
-        
-        return loss, losses
-    
-    def _shared_epoch_end(self, outputs, stage=None):
-        n_total = sum([out['batch_size'] for out in outputs])
-        
-        def aggregate_outputs(m):
-            return torch.stack([out['metrics'][m] * out['batch_size'] for out in outputs]).sum() / n_total
-        
-        metrics = {m: aggregate_outputs(m) for m in outputs[0]['metrics'].keys()}
-        logs = dict()
-        for m in metrics.keys():
-            logs['/'.join([stage, m])] = metrics[m].detach().item()
-        if self.trainer.is_global_zero:
-            self.log_dict(logs, rank_zero_only=True)
-        
-    def configure_optimizers(self):
-        optimizer = self.optimizer_fn(self.parameters(), **self.optimizer_kwargs)
-        if self.lr_scheduler_fn is not None:
-            lr_scheduler = {
-                'scheduler': self.lr_scheduler_fn(optimizer, **self.lr_scheduler_kwargs),
-                'interval': self.lr_scheduler_interval,
-                'monitor': 'train/loss'
-            }
-            return {'optimizer': optimizer, 'lr_scheduler': lr_scheduler}
-        else:
-            return optimizer
-
-        
      
         
 class GenericModel(pl.LightningModule):
-    def __init__(self, loss_fn='MSELoss', optimizer_fn='AdamW', optimizer_kwargs=None, lr_scheduler_fn=None, lr_scheduler_kwargs=None, lr_scheduler_interval='epoch'):
+    def __init__(self, loss_fn='MSELoss', loss_kwargs=None, optimizer_fn='AdamW', optimizer_kwargs=None, lr_scheduler_fn=None, lr_scheduler_kwargs=None, lr_scheduler_interval='epoch'):
         super(GenericModel, self).__init__()
         
-        self.loss_fn = get_loss_fn(loss_fn)
+        self.loss_fn = get_loss_fn(loss_fn, **loss_kwargs) if loss_kwargs is not None else get_loss_fn(loss_fn)
         self.optimizer_fn = OPTIMIZER_DICT[optimizer_fn]
         self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs is not None else {}
         self.lr_scheduler_fn = LR_SCHEDULER_DICT[lr_scheduler_fn] if lr_scheduler_fn is not None else None
@@ -435,11 +313,11 @@ class GenericModel(pl.LightningModule):
 
 
 class SolutionMapBase(GenericModel):
-    def __init__(self, H_strength=0., WS_strength=0., S_strength=0., **kwargs):
+    def __init__(self, H_strength=0., WS_strength=0., S_strength=0., sequence_len=1, **kwargs):
         super(SolutionMapBase, self).__init__(**kwargs)
             
-        self.sequence_len = 1
-        self.weights = None
+        self.sequence_len = sequence_len
+        self.weights = torch.ones(self.sequence_len)
         
         self.compute_H = None 
         self.H_strength = H_strength 
