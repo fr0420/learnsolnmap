@@ -425,8 +425,8 @@ class SolutionMap(SolutionMapBase):
             self.input_size = 12
         elif problem == 'lennardjones':
             lj = LennardJones(**problem_kwargs)
-            self.compute_H = lambda u: lj.compute_H(u[:, :14]*100., u[:, 14:])
-            self.compute_Lagrangian = lambda u: lj.compute_Lagrangian(u[:, :14]*100., u[:, 14:])
+            self.compute_H = lambda u: lj.compute_H(u[:, :14], u[:, 14:])
+            self.compute_Lagrangian = lambda u: lj.compute_Lagrangian(u[:, :14], u[:, 14:])
             self.input_size = 28
         else:
             self.compute_H = None 
@@ -496,8 +496,8 @@ class CorrectionOperator(SolutionMapBase):
             self.coarse_solver = VelocityVerlet(lambda q: fpu.compute_q_ddot(q), Delta_t, int(Delta_t//coarse_h))
         elif self.problem == 'lennardjones':
             lj = LennardJones(**problem_kwargs)
-            self.compute_H = lambda u: lj.compute_H(u[:, :14]*100., u[:, 14:])
-            self.compute_Lagrangian = lambda u: lj.compute_Lagrangian(u[:, :14]*100., u[:, 14:])
+            self.compute_H = lambda u: lj.compute_H(u[:, :14], u[:, 14:])
+            self.compute_Lagrangian = lambda u: lj.compute_Lagrangian(u[:, :14], u[:, 14:])
             self.input_size = 28
             self.coarse_solver = VelocityVerlet(lambda x: lj.compute_x_ddot(x), Delta_t, int(Delta_t//coarse_h))
         else:
@@ -512,13 +512,8 @@ class CorrectionOperator(SolutionMapBase):
         
     def coarse_solve(self, u):
         d = self.input_size // 2
-        if self.problem == 'fpu':
-            return torch.cat(self.coarse_solver.solve(u[:, :d], u[:, d:]), dim=1)
-        elif self.problem == 'lennardjones':
-            v, x = self.coarse_solver.solve(u[:, :d]*100., u[:, d:])
-            return torch.cat((v/100., x), dim=1)
-        else: 
-            pass 
+        return torch.cat(self.coarse_solver.solve(u[:, :d], u[:, d:]), dim=1)
+
         
     def forward(self, u):
         return self.model(self.coarse_solve(u))
@@ -550,8 +545,8 @@ class CorrectionOperator2(SolutionMapBase):
             self.coarse_solver = VelocityVerlet(lambda q: fpu.compute_q_ddot(q), Delta_t, int(Delta_t//coarse_h))
         elif self.problem == 'lennardjones':
             lj = LennardJones(**problem_kwargs)
-            self.compute_H = lambda u: lj.compute_H(u[:, :14]*100., u[:, 14:])
-            self.compute_Lagrangian = lambda u: lj.compute_Lagrangian(u[:, :14]*100., u[:, 14:])
+            self.compute_H = lambda u: lj.compute_H(u[:, :14], u[:, 14:])
+            self.compute_Lagrangian = lambda u: lj.compute_Lagrangian(u[:, :14], u[:, 14:])
             self.input_size = 28
             self.coarse_solver = VelocityVerlet(lambda x: lj.compute_x_ddot(x), Delta_t, int(Delta_t//coarse_h))
         else:
@@ -566,13 +561,7 @@ class CorrectionOperator2(SolutionMapBase):
         
     def coarse_solve(self, u):
         d = self.input_size // 2
-        if self.problem == 'fpu':
-            return torch.cat(self.coarse_solver.solve(u[:, :d], u[:, d:]), dim=1)
-        elif self.problem == 'lennardjones':
-            v, x = self.coarse_solver.solve(u[:, :d]*100., u[:, d:])
-            return torch.cat((v/100., x), dim=1)
-        else: 
-            pass 
+        return torch.cat(self.coarse_solver.solve(u[:, :d], u[:, d:]), dim=1)
         
     def forward(self, u):
         u_c = self.coarse_solve(u)
