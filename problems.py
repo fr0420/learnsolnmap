@@ -72,3 +72,8 @@ class FPU:
         q_ddot = torch.stack((a_l, a_r), dim=-1)
     
         return q_ddot.flatten(start_dim=1)
+    
+    def Lambda_transform(self, p, q):
+        dq_stiff = 0.5 * self.Omega * (q[:, 1::2] - q[:, ::2])
+        dq_soft = torch.stack((q[:, 0], q[:, 2]-q[:, 1], q[:, 4]-q[:, 3], -q[:, 5]), dim=1)**2
+        return torch.cat((p / 2**0.5, dq_stiff, dq_soft), dim=1)
