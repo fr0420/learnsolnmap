@@ -65,6 +65,7 @@ ACTIVATION_DICT = {
 LOSS_FN_DICT = {
     'MSELoss': nn.MSELoss,
     'WeightedMSELoss': WeightedMSELoss,
+    'MeanEnergyNormSquaredLoss': MeanEnergyNormSquaredLoss,
 }
 
 OPTIMIZER_DICT = {
