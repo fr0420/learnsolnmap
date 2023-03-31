@@ -332,24 +332,28 @@ class SolutionMapBase(GenericModel):
         pass 
         
     def training_step(self, batch, batch_idx):
-        losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
+#         losses = torch.zeros(self.sequence_len, dtype=torcsh.double, device=self.device)
+        losses = torch.zeros(self.sequence_len).to(batch[0])
         self.weights = self.weights.type_as(losses)
-        H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
-        S_losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
+#         H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
+        H_losses = torch.zeros(2).to(batch[0]) 
+        S_losses = torch.zeros_like(losses)
+        traj_errors = torch.zeros_like(losses)
         
         u0 = batch[0]
         H0 = self.compute_H(u0)
         res = self.get_sequence_predictions(u0, self.sequence_len)
         
-        for t in range(1, self.sequence_len+1):
-            ut_pred = res[t-1]
-            ut_true = batch[t]
+        for t in range(self.sequence_len):
+            ut_pred = res[t]
+            ut_true = batch[t+1]
             
-            if t <= 2: 
-                H_losses[t-1] = nn.functional.mse_loss(self.compute_H(ut_pred), H0)
-            if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
-                losses[t-1] = self.loss_fn(ut_pred, ut_true)
-            S_losses[t-1] = self.compute_Lagrangian(ut_pred).mean()
+            if t < 2: 
+                H_losses[t] = nn.functional.mse_loss(self.compute_H(ut_pred), H0)
+            if t < NSTEPS_TO_EVAL or self.weights[t] != 0:
+                losses[t] = self.loss_fn(ut_pred, ut_true)
+            S_losses[t] = self.compute_Lagrangian(ut_pred).mean()
+            traj_errors[t] = nn.functional.mse_loss(ut_pred, ut_true)
             
         loss = losses @ self.weights
         
@@ -368,31 +372,36 @@ class SolutionMapBase(GenericModel):
         
         self.log('step_loss', loss, on_step=True, on_epoch=False, prog_bar=True)
         metrics = {'loss': loss.detach()}
-        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
-            metrics[f'loss_step{t+1}'] = l.detach()
+        for t in range(self.sequence_len):
+            metrics[f'loss_step{t+1}'] = losses[t].detach()
+            metrics[f'traj_err_step{t+1}'] = traj_errors[t].detach()
         metrics['loss_H'] = loss_H.detach()
         metrics['loss_S'] = loss_S.detach()
         return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
   
     def _shared_eval_step(self, batch, batch_idx):
-        losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
+#         losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
+        losses = torch.zeros(self.sequence_len).to(batch[0])
         self.weights = self.weights.type_as(losses)
-        H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
-        S_losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
+#         H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
+        H_losses = torch.zeros(2).to(batch[0]) 
+        S_losses = torch.zeros_like(losses)
+        traj_errors = torch.zeros_like(losses)
         
         u0 = batch[0]
         H0 = self.compute_H(u0)
         res = self.get_sequence_predictions(u0, self.sequence_len)
         
-        for t in range(1, self.sequence_len+1):
-            ut_pred = res[t-1]
-            ut_true = batch[t]
+        for t in range(self.sequence_len):
+            ut_pred = res[t]
+            ut_true = batch[t+1]
             
-            if t <= 2: 
-                H_losses[t-1] = nn.functional.mse_loss(self.compute_H(ut_pred), H0)
-            if t <= NSTEPS_TO_EVAL or self.weights[t-1] != 0:
-                losses[t-1] = self.loss_fn(ut_pred, ut_true)
-            S_losses[t-1] = self.compute_Lagrangian(ut_pred).mean()
+            if t < 2: 
+                H_losses[t] = nn.functional.mse_loss(self.compute_H(ut_pred), H0)
+            if t < NSTEPS_TO_EVAL or self.weights[t] != 0:
+                losses[t] = self.loss_fn(ut_pred, ut_true)
+            S_losses[t] = self.compute_Lagrangian(ut_pred).mean()
+            traj_errors[t] = nn.functional.mse_loss(ut_pred, ut_true)
 
         loss = losses @ self.weights
         
@@ -402,8 +411,9 @@ class SolutionMapBase(GenericModel):
         loss += self.S_strength * self.Delta_t * loss_S
         
         metrics = {'loss': loss.detach()}
-        for t, l in enumerate(losses[:NSTEPS_TO_EVAL]):
-            metrics[f'loss_step{t+1}'] = l.detach()
+        for t in range(self.sequence_len):
+            metrics[f'loss_step{t+1}'] = losses[t].detach()
+            metrics[f'traj_err_step{t+1}'] = traj_errors[t].detach()
         metrics['loss_H'] = loss_H.detach()
         metrics['loss_S'] = loss_S.detach()
         return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
