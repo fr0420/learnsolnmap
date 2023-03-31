@@ -15,9 +15,27 @@ class WeightedMSELoss(nn.Module):
         self.reduction = reduction
     
     def forward(self, input, target):
+        self.weights = self.weights.to(input)
         return nn.functional.mse_loss(self.weights*input, self.weights*target, reduction=self.reduction)
     
+class MeanEnergyNormSquaredLoss(nn.Module):
+    """Mean energy norm squared loss"""
+
+    def __init__(self, problem, problem_kwargs, reduction='mean'):
+        super().__init__()
+        if problem == 'fpu':
+            fpu = FPU(**problem_kwargs)
+            self.Lambda = lambda u: fpu.Lambda_transform(u[:, :6], u[:, 6:])
+        else:
+            self.Lambda = None
+        self.reduction = reduction
     
+    def forward(self, input, target):
+        input = self.Lambda(input)
+        target = self.Lambda(target)
+        return nn.functional.mse_loss(input, target, reduction=self.reduction)
+    
+
 ACTIVATION_DICT = {
     'ELU': nn.ELU,
     'Hardshrink': nn.Hardshrink,
@@ -332,10 +350,8 @@ class SolutionMapBase(GenericModel):
         pass 
         
     def training_step(self, batch, batch_idx):
-#         losses = torch.zeros(self.sequence_len, dtype=torcsh.double, device=self.device)
         losses = torch.zeros(self.sequence_len).to(batch[0])
         self.weights = self.weights.type_as(losses)
-#         H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
         H_losses = torch.zeros(2).to(batch[0]) 
         S_losses = torch.zeros_like(losses)
         traj_errors = torch.zeros_like(losses)
@@ -380,10 +396,8 @@ class SolutionMapBase(GenericModel):
         return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
   
     def _shared_eval_step(self, batch, batch_idx):
-#         losses = torch.zeros(self.sequence_len, dtype=torch.double, device=self.device)
         losses = torch.zeros(self.sequence_len).to(batch[0])
         self.weights = self.weights.type_as(losses)
-#         H_losses = torch.zeros(2, dtype=torch.double, device=self.device) 
         H_losses = torch.zeros(2).to(batch[0]) 
         S_losses = torch.zeros_like(losses)
         traj_errors = torch.zeros_like(losses)
