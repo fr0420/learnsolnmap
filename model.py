@@ -17,6 +17,7 @@ class WeightedMSELoss(nn.Module):
     def forward(self, input, target):
         self.weights = self.weights.to(input)
         return nn.functional.mse_loss(self.weights*input, self.weights*target, reduction=self.reduction)
+
     
 class MeanEnergyNormSquaredLoss(nn.Module):
     """Mean energy norm squared loss"""
@@ -36,6 +37,24 @@ class MeanEnergyNormSquaredLoss(nn.Module):
         return nn.functional.mse_loss(input, target, reduction=self.reduction)
     
 
+class AnchoredMeanEnergyNormSquaredLoss(nn.Module):
+    """Anchored mean energy norm squared loss"""
+
+    def __init__(self, problem, problem_kwargs, reduction='mean'):
+        super().__init__()
+        if problem == 'fpu':
+            fpu = FPU(**problem_kwargs)
+            self.Lambda = lambda u: fpu.Lambda2_transform(u[:, :6], u[:, 6:])
+        else:
+            self.Lambda = None
+        self.reduction = reduction
+    
+    def forward(self, input, target):
+        input = self.Lambda(input)
+        target = self.Lambda(target)
+        return nn.functional.mse_loss(input, target, reduction=self.reduction)
+
+    
 ACTIVATION_DICT = {
     'ELU': nn.ELU,
     'Hardshrink': nn.Hardshrink,
@@ -66,6 +85,7 @@ LOSS_FN_DICT = {
     'MSELoss': nn.MSELoss,
     'WeightedMSELoss': WeightedMSELoss,
     'MeanEnergyNormSquaredLoss': MeanEnergyNormSquaredLoss,
+    'AnchoredMeanEnergyNormSquaredLoss': AnchoredMeanEnergyNormSquaredLoss,
 }
 
 OPTIMIZER_DICT = {
