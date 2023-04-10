@@ -508,10 +508,17 @@ class SolutionMap(SolutionMapBase):
             self.h2o = nn.Linear(self.hidden_size, self.input_size, bias=False)
             self.h2o.weight = nn.Parameter(W.T, requires_grad=False)
         
+        self.friction = nn.Parameter(torch.tensor(1e-3), requires_grad=True)
+    
+    def apply_friction(self, u):
+        d = self.input_size // 2
+        return torch.cat((-nn.functional.relu(self.friction)*u[:, :d], u[:, d:]), dim=1)
+    
     def forward(self, u):
         u = self.i2h(u)
         u = self.h2h(u)
         u = self.h2o(u)
+        u += self.apply_friction(u)
         return u
     
     def get_sequence_predictions(self, u0, sequence_len):
@@ -519,7 +526,9 @@ class SolutionMap(SolutionMapBase):
         hidden = self.i2h(u0)
         for _ in range(sequence_len):
             hidden = self.h2h(hidden)
-            res.append(self.h2o(hidden))
+            out = self.h2o(hidden)
+            out += self.apply_friction(out)
+            res.append(out)
         return res
 
 
