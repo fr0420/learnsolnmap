@@ -253,6 +253,25 @@ class HamiltonianReversibleNetwork(nn.Module):
                         s += torch.linalg.norm(layer_next.layer1.weight - layer_cur.layer1.weight) 
                         s += torch.linalg.norm(layer_next.layer2.weight - layer_cur.layer2.weight) 
         return s / 1e-3
+
+    
+class FrictionBlock(nn.Module):
+    """Friction Block"""
+    
+    def __init__(self, d):
+        super(FrictionBlock, self).__init__()
+        
+        self.d = d
+        self.relu = nn.ReLU()
+        self.gamma = nn.Parameter(torch.tensor(1e-3), requires_grad=True)
+        
+    def forward(self, x):
+        
+        p, q = torch.split(x, [self.d, self.d], dim=-1)
+        dp = - self.relu(self.gamma) * p
+        dq = torch.zeros_like(q)
+
+        return torch.cat((dp, dq), dim=-1)
     
 
 def get_activation(activation_fn, **kwargs):
@@ -508,17 +527,13 @@ class SolutionMap(SolutionMapBase):
             self.h2o = nn.Linear(self.hidden_size, self.input_size, bias=False)
             self.h2o.weight = nn.Parameter(W.T, requires_grad=False)
         
-        self.friction = nn.Parameter(torch.tensor(1e-3), requires_grad=True)
-    
-    def apply_friction(self, u):
-        d = self.input_size // 2
-        return torch.cat((-nn.functional.relu(self.friction)*u[:, :d], u[:, d:]), dim=1)
+        self.friction = FrictionBlock(self.input_size // 2)
     
     def forward(self, u):
         u = self.i2h(u)
         u = self.h2h(u)
         u = self.h2o(u)
-        u += self.apply_friction(u)
+        u = u + self.friction(u)
         return u
     
     def get_sequence_predictions(self, u0, sequence_len):
@@ -527,7 +542,7 @@ class SolutionMap(SolutionMapBase):
         for _ in range(sequence_len):
             hidden = self.h2h(hidden)
             out = self.h2o(hidden)
-            out += self.apply_friction(out)
+            out = out + self.friction(out)
             res.append(out)
         return res
 
