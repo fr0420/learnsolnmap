@@ -258,17 +258,16 @@ class HamiltonianReversibleNetwork(nn.Module):
 class FrictionBlock(nn.Module):
     """Friction Block"""
     
-    def __init__(self, d):
+    def __init__(self, d, init_gamma):
         super(FrictionBlock, self).__init__()
         
         self.d = d
-        self.relu = nn.ReLU()
-        self.gamma = nn.Parameter(torch.tensor(1e-3), requires_grad=True)
+        self.gamma = nn.Parameter(torch.tensor(init_gamma), requires_grad=True)
         
     def forward(self, x):
         
         p, q = torch.split(x, [self.d, self.d], dim=-1)
-        dp = - self.relu(self.gamma) * p
+        dp = - self.gamma**2 * p
         dq = torch.zeros_like(q)
 
         return torch.cat((dp, dq), dim=-1)
@@ -474,7 +473,7 @@ class SolutionMapBase(GenericModel):
 
     
 class SolutionMap(SolutionMapBase):
-    def __init__(self, Delta_t, h2h_model_name, h2h_layer_sizes, i2h_layer_sizes, h2o_layer_sizes, problem, problem_kwargs=None, activation_fn='ELU', activation_kwargs=None, use_bn=False, use_scale=True, **kwargs):
+    def __init__(self, Delta_t, h2h_model_name, h2h_layer_sizes, i2h_layer_sizes, h2o_layer_sizes, problem, problem_kwargs=None, activation_fn='ELU', activation_kwargs=None, use_bn=False, use_scale=True, init_gamma=0.0, **kwargs):
         super(SolutionMap, self).__init__(**kwargs)
         
         self.save_hyperparameters()
@@ -527,7 +526,7 @@ class SolutionMap(SolutionMapBase):
             self.h2o = nn.Linear(self.hidden_size, self.input_size, bias=False)
             self.h2o.weight = nn.Parameter(W.T, requires_grad=False)
         
-        self.friction = FrictionBlock(self.input_size // 2)
+        self.friction = FrictionBlock(d=self.input_size//2, init_gamma=init_gamma)
     
     def forward(self, u):
         u = self.i2h(u)
