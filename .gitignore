@@ -47,3 +47,11 @@ venv.bak/
 
 # IDE caches
 .idea/
+
+### Data and model files 
+
+data/
+solutionmap/
+lightning_logs/
+checkpoints/
+res/
