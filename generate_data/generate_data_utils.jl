@@ -86,12 +86,36 @@ function normal(mean::T, std::T, n_samples::Int) where T<:AbstractFloat
 end
 
 
-function save(filepath, P, Q)
-
+function save_csv(
+        filepath::String, 
+        P::AbstractArray{T, 2}, 
+        Q::AbstractArray{T, 2}, 
+        dtype::Type) where T<:AbstractFloat
+    """Save P and Q matrices to a csv file"""
+    
+    P = convert.(dtype, P)
+    Q = convert.(dtype, Q)
+    
     df_P = DataFrame(P', "p" .* string.(1:size(P, 1)))
     df_Q = DataFrame(Q', "q" .* string.(1:size(Q, 1)))     
     
     mkpath(dirname(filepath))
     CSV.write(filepath, hcat(df_P, df_Q))
     
+end
+
+
+function read_csv(filepath::String, dtype::Type)
+    """Read P and Q matrices from a csv file"""
+    
+    df = CSV.read(filepath, DataFrame, types=dtype)
+    
+    dim = Int(ncol(df)/2)
+    df_P = df[:, 1:dim]
+    df_Q = df[:, dim+1:end]    
+    
+    P = Matrix(df_P)'
+    Q = Matrix(df_Q)'
+    
+    return P, Q
 end
