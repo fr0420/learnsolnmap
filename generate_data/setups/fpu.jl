@@ -2,28 +2,79 @@
 Fermi-Pasta-Ulam Problem 
 """
 
+using StaticArrays
 
 const m = 3;
 
 
-function A(q::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
-    """Compute second order time derivative of q"""
+function A!(ddu, du, u, p, t) 
+    """Compute ddu, second order time derivative of u, in place"""
     
-    dq_stiff = q[2:2:end] - q[1:2:end]
-    q_pad = vcat([0], q, [0]) 
-    dq_soft = q_pad[2:2:end] - q_pad[1:2:end]
+    halfomegasquared = p
     
-    halfomegasquared = 0.5 * omega^2
-
-    a_r = - halfomegasquared * dq_stiff + 4 * dq_soft[2:end].^3
-    a_l = halfomegasquared * dq_stiff - 4 * dq_soft[1:end-1].^3
+#     u_odd = @view u[1:2:end]
+#     u_even = @view u[2:2:end]
+#     ddu_odd = @view ddu[1:2:end]
+#     ddu_even = @view ddu[2:2:end]
     
-    q_ddot = zero(q)
-    q_ddot[1:2:end] = a_l
-    q_ddot[2:2:end] = a_r
+#     @. ddu_odd = halfomegasquared * (u_even .- u_odd)
+#     @. ddu_even = - ddu_odd
     
-    return q_ddot
+#     u_odd = @view u[3:2:end]
+#     u_even = @view u[2:2:end-1]
+#     ddu_odd = @view ddu[3:2:end]
+#     ddu_even = @view ddu[2:2:end-1]
+    
+#     ddu[1] -= 4 * u[1].^3 
+#     @. ddu_odd -= 4 * (u_odd .- u_even).^3 
+#     @. ddu_even += 4 * (u_odd .- u_even).^3 
+#     ddu[end] += 4 * (-u[end]).^3 
+    
+    ddu[1] = halfomegasquared * (u[2] - u[1]) - 4 * u[1].^3
+    ddu[2] = - halfomegasquared * (u[2] - u[1]) + 4 * (u[3] - u[2]).^3
+    ddu[3] = halfomegasquared * (u[4] - u[3]) - 4 * (u[3] - u[2]).^3 
+    ddu[4] = - halfomegasquared * (u[4] - u[3]) + 4 * (u[5] - u[4]).^3
+    ddu[5] = halfomegasquared * (u[6] - u[5]) - 4 * (u[5] - u[4]).^3 
+    ddu[6] = - halfomegasquared * (u[6] - u[5]) + 4 * (- u[6]).^3
+    
+    nothing 
 end
+
+
+function A_static(du, u, p, t) 
+    """Compute ddu, second order time derivative of u, using StaticArrays"""
+    
+    halfomegasquared = p
+    
+    ddu1 = halfomegasquared * (u[2] - u[1]) - 4 * u[1].^3
+    ddu2 = - halfomegasquared * (u[2] - u[1]) + 4 * (u[3] - u[2]).^3
+    ddu3 = halfomegasquared * (u[4] - u[3]) - 4 * (u[3] - u[2]).^3 
+    ddu4 = - halfomegasquared * (u[4] - u[3]) + 4 * (u[5] - u[4]).^3
+    ddu5 = halfomegasquared * (u[6] - u[5]) - 4 * (u[5] - u[4]).^3 
+    ddu6 = - halfomegasquared * (u[6] - u[5]) + 4 * (- u[6]).^3
+    
+    SA[ddu1, ddu2, ddu3, ddu4, ddu5, ddu6]
+end
+
+
+# function A(q::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
+#     """Compute second order time derivative of q"""
+    
+#     dq_stiff = q[2:2:end] - q[1:2:end]
+#     q_pad = vcat([0], q, [0]) 
+#     dq_soft = q_pad[2:2:end] - q_pad[1:2:end]
+    
+#     halfomegasquared = 0.5 * omega^2
+
+#     a_r = - halfomegasquared * dq_stiff + 4 * dq_soft[2:end].^3
+#     a_l = halfomegasquared * dq_stiff - 4 * dq_soft[1:end-1].^3
+    
+#     q_ddot = zero(q)
+#     q_ddot[1:2:end] = a_l
+#     q_ddot[2:2:end] = a_r
+    
+#     return q_ddot
+# end
 
 
 function compute_K(p::AbstractArray{T, 1}) where T<:AbstractFloat
@@ -67,16 +118,16 @@ function initial_condition(;omega::T=300.) where T<:AbstractFloat
     
     q0 = zeros(T, 2*m)
     p0 = zeros(T, 2*m)
-    q0[1] = (1 - 1/omega)/sqrt(2)
-    q0[2] = (1 + 1/omega)/sqrt(2)
-    p0[2] = sqrt(2)
+    q0[1] = (1 - 1/omega)/sqrt(convert(T, 2.0))
+    q0[2] = (1 + 1/omega)/sqrt(convert(T, 2.0))
+    p0[2] = sqrt(convert(T, 2.0))
         
     return p0, q0
 end 
 
 
 
-using NL2sol
+# using NL2sol
 
 const Lengthz = 4*m+1;
 
@@ -133,13 +184,13 @@ function Jac_dq(q::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
 end
 
                 
-function recover_canonical_vars(z::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
+# function recover_canonical_vars(z::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
     
-    p = z[1:2*m]
-    dq = z[2*m+1:end]
+#     p = z[1:2*m]
+#     dq = z[2*m+1:end]
     
-    res = nl2sol((q,r)->compute_dq(q; omega=omega).-dq, (q,r)->Jac_dq(q; omega=omega), q0, 2*m+1; quiet=true)
-    q = res.minimum 
+#     res = nl2sol((q,r)->compute_dq(q; omega=omega).-dq, (q,r)->Jac_dq(q; omega=omega), q0, 2*m+1; quiet=true)
+#     q = res.minimum 
     
-    return p, q
-end
+#     return p, q
+# end
