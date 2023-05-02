@@ -1,5 +1,5 @@
-using DataFrames
-using CSV
+using DataFrames, CSV
+using MultiFloats 
 
 
 function nSphereSampling(n::Int)
@@ -108,7 +108,12 @@ end
 function read_csv(filepath::String, dtype::Type)
     """Read P and Q matrices from a csv file"""
     
-    df = CSV.read(filepath, DataFrame, types=dtype)
+    if dtype == Float64x4
+        df = CSV.read(filepath, DataFrame, types=BigFloat)
+        df = convert.(Float64x4, df) 
+    else
+        df = CSV.read(filepath, DataFrame, types=dtype)
+    end
     
     dim = Int(ncol(df)/2)
     df_P = df[:, 1:dim]
