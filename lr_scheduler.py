@@ -13,12 +13,16 @@ def annealing_linear(start, end, pct):
     return (end - start) * pct + start
     
     
-class CustomScheduler(_LRScheduler):
-    def __init__(self, optimizer, steps_per_cycle=2000, base_lr=0.001, max_lr=0.01, 
+class CustomCyclicLR(_LRScheduler):
+    def __init__(self, optimizer, steps_per_cycle=2000, mult_factor=1.0, base_lr=0.001, max_lr=0.01, 
                  base_lr_scale_fn=None, max_lr_scale_fn=None, scale_mode='cycle', 
                  pct_start=0.3, anneal_strategy='cos', last_epoch=-1, verbose=False):
         
-        self.steps_per_cycle = steps_per_cycle
+        self.cycle_counter = 0
+        self.step_counter = 0
+        self.cur_cycle_length = steps_per_cycle 
+        self.mult_factor = mult_factor 
+        
         self.base_lr = base_lr 
         self.max_lr = max_lr
         
@@ -26,6 +30,7 @@ class CustomScheduler(_LRScheduler):
         if scale_mode not in ['cycle', 'iterations']:
             raise ValueError("scale_mode must be one of 'cycle' or 'iterations', instead got {}".format(scale_mode))
         self.scale_mode = scale_mode 
+        
         self.base_lr_scale_fn = self._default_scale_fn() if base_lr_scale_fn is None else base_lr_scale_fn
         self.max_lr_scale_fn = self._default_scale_fn() if max_lr_scale_fn is None else max_lr_scale_fn
         
@@ -52,18 +57,22 @@ class CustomScheduler(_LRScheduler):
             
     def get_lr(self):
         step_num = self.last_epoch 
-        cycle_idx = math.floor(step_num / self.steps_per_cycle)
+        
+        if step_num > self.step_counter + self.cur_cycle_length: 
+            self.cycle_counter += 1 
+            self.step_counter += self.cur_cycle_length 
+            self.cur_cycle_length *= self.mult_factor
         
         if self.scale_mode == 'cycle': 
-            init_lr = self.base_lr * self.base_lr_scale_fn(cycle_idx)
-            final_lr = self.base_lr * self.base_lr_scale_fn(cycle_idx+1)
-            peak_lr = self.max_lr * self.max_lr_scale_fn(cycle_idx+self.pct_start)
+            init_lr = self.base_lr * self.base_lr_scale_fn(self.cycle_counter)
+            final_lr = self.base_lr * self.base_lr_scale_fn(self.cycle_counter+1)
+            peak_lr = self.max_lr * self.max_lr_scale_fn(self.cycle_counter+self.pct_start)
         elif self.scale_mode == 'iterations':
-            init_lr = self.base_lr * self.base_lr_scale_fn(cycle_idx*self.steps_per_cycle)
-            final_lr = self.base_lr * self.base_lr_scale_fn((cycle_idx+1)*self.steps_per_cycle)
-            peak_lr = self.max_lr * self.max_lr_scale_fn((cycle_idx+self.pct_start)*self.steps_per_cycle)
+            init_lr = self.base_lr * self.base_lr_scale_fn(self.step_counter)
+            final_lr = self.base_lr * self.base_lr_scale_fn(self.step_counter+self.cur_cycle_length)
+            peak_lr = self.max_lr * self.max_lr_scale_fn(self.step_counter+self.pct_start*self.cur_cycle_length)
             
-        x = step_num / self.steps_per_cycle - cycle_idx 
+        x = (step_num - self.step_counter) / self.cur_cycle_length 
         
         if x < self.pct_start:
             pct = x / self.pct_start 
