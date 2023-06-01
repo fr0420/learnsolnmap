@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch import optim
+from lr_scheduler import CustomCyclicLR
 import pytorch_lightning as pl
 from problems import FPU, LennardJones
 from solvers import VelocityVerlet
@@ -117,7 +118,8 @@ LR_SCHEDULER_DICT = {
     'ReduceLROnPlateau': optim.lr_scheduler.ReduceLROnPlateau,
     'CyclicLR': optim.lr_scheduler.CyclicLR,
     'OneCycleLR': optim.lr_scheduler.OneCycleLR,
-    'CosineAnnealingWarmRestarts': optim.lr_scheduler.CosineAnnealingWarmRestarts    
+    'CosineAnnealingWarmRestarts': optim.lr_scheduler.CosineAnnealingWarmRestarts,   
+    'CustomCyclicLR': CustomCyclicLR,
 }
 
 
@@ -166,7 +168,8 @@ class ResMLP(nn.Module):
             )
         self.scale = 1. / len(self.layers) if use_scale else 1.
         
-    def forward(self, x):
+    def forward(self, x, return_hidden=False):
+        hs = [] 
         for i, layer in enumerate(self.layers[:-1]):
             identity = x 
             x = layer(x)
@@ -175,6 +178,8 @@ class ResMLP(nn.Module):
             x = self.activation(x)
             if layer.in_features == layer.out_features:
                 x = identity + self.scale * x
+            if return_hidden: 
+                hs.append(x) 
         
         output_layer = self.layers[-1]
         identity = x
@@ -182,8 +187,11 @@ class ResMLP(nn.Module):
         if output_layer.in_features == output_layer.out_features:
             x = self.activation(x)
             x = identity + self.scale * x
-                
-        return x
+
+        if return_hidden:
+            return x, hs 
+        else:         
+            return x
     
 
 class HamiltonianReversibleBlock(nn.Module):
@@ -370,7 +378,7 @@ class GenericModel(pl.LightningModule):
 
 
 class SolutionMapBase(GenericModel):
-    def __init__(self, H_strength=0., WS_strength=0., S_strength=0., sequence_len=1, **kwargs):
+    def __init__(self, H_strength=0., WS_strength=0., S_strength=0., V_strength=0., sequence_len=1, **kwargs):
         super(SolutionMapBase, self).__init__(**kwargs)
             
         self.sequence_len = sequence_len
@@ -380,7 +388,8 @@ class SolutionMapBase(GenericModel):
         self.H_strength = H_strength 
         self.WS_strength = WS_strength 
         self.S_strength = S_strength 
-        
+        self.V_strength = V_strength 
+
     def set_sequence_weights(self, weights):
         self.weights = weights 
         self.sequence_len = len(weights)
@@ -391,31 +400,40 @@ class SolutionMapBase(GenericModel):
     def training_step(self, batch, batch_idx):
         losses = torch.zeros(self.sequence_len).to(batch[0])
         self.weights = self.weights.type_as(losses)
-        H_losses = torch.zeros(2).to(batch[0]) 
+        # H_losses = torch.zeros(2).to(batch[0]) 
         S_losses = torch.zeros_like(losses)
+        V_losses = torch.zeros_like(losses)
         traj_errors = torch.zeros_like(losses)
-        
+        H_errors = torch.zeros_like(losses)
+
         u0 = batch[0]
         H0 = self.compute_H(u0)
-        res = self.get_sequence_predictions(u0, self.sequence_len)
+        res, res_hs = self.get_sequence_predictions(u0, self.sequence_len)
         
         for t in range(self.sequence_len):
             ut_pred = res[t]
             ut_true = batch[t+1]
             
-            if t < 2: 
-                H_losses[t] = nn.functional.mse_loss(self.compute_H(ut_pred), H0)
+            # if t < 2: 
+            #     H_losses[t] = nn.functional.mse_loss(self.compute_H(ut_pred), H0)
             if t < NSTEPS_TO_EVAL or self.weights[t] != 0:
                 losses[t] = self.loss_fn(ut_pred, ut_true)
             S_losses[t] = self.compute_Lagrangian(ut_pred).mean()
             traj_errors[t] = nn.functional.mse_loss(ut_pred, ut_true)
-            
+            H_errors[t] = nn.functional.l1_loss(self.compute_H(ut_pred), H0)
+             
+            hs = res_hs[t] 
+            V_losses[t] = torch.stack([nn.functional.mse_loss(hs[i], hs[i-1]) for i in range(1, len(hs))]).sum() 
+
         loss = losses @ self.weights
         
-        loss_H = H_losses.sum()
+#         loss_H = H_losses.sum()
 #         loss += self.H_strength * loss_H  # disable H gradient computation for now 
         loss_S = S_losses.sum()
         loss += self.S_strength * self.Delta_t * loss_S
+        
+        loss_V = V_losses.sum()
+        loss += self.V_strength * loss_V 
         
 #         if isinstance(self.h2h, HamiltonianReversibleNetwork):
 #             loss_WS = self.WS_strength * self.h2h.compute_weight_smoothness()
@@ -430,35 +448,40 @@ class SolutionMapBase(GenericModel):
         for t in range(self.sequence_len):
             metrics[f'loss_step{t+1}'] = losses[t].detach()
             metrics[f'traj_err_step{t+1}'] = traj_errors[t].detach()
-        metrics['loss_H'] = loss_H.detach()
+            metrics[f'H_err_step{t+1}'] = H_errors[t].detach()
+
+#         metrics['loss_H'] = loss_H.detach()
         metrics['loss_S'] = loss_S.detach()
+        metrics['loss_V'] = loss_V.detach()
         return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
   
     def _shared_eval_step(self, batch, batch_idx):
         losses = torch.zeros(self.sequence_len).to(batch[0])
         self.weights = self.weights.type_as(losses)
-        H_losses = torch.zeros(2).to(batch[0]) 
+  #       H_losses = torch.zeros(2).to(batch[0]) 
         S_losses = torch.zeros_like(losses)
         traj_errors = torch.zeros_like(losses)
-        
+        H_errors = torch.zeros_like(losses)
+
         u0 = batch[0]
         H0 = self.compute_H(u0)
-        res = self.get_sequence_predictions(u0, self.sequence_len)
+        res, _ = self.get_sequence_predictions(u0, self.sequence_len)
         
         for t in range(self.sequence_len):
             ut_pred = res[t]
             ut_true = batch[t+1]
             
-            if t < 2: 
-                H_losses[t] = nn.functional.mse_loss(self.compute_H(ut_pred), H0)
+  #           if t < 2: 
+  #               H_losses[t] = nn.functional.mse_loss(self.compute_H(ut_pred), H0)
             if t < NSTEPS_TO_EVAL or self.weights[t] != 0:
                 losses[t] = self.loss_fn(ut_pred, ut_true)
             S_losses[t] = self.compute_Lagrangian(ut_pred).mean()
             traj_errors[t] = nn.functional.mse_loss(ut_pred, ut_true)
-
+            H_errors[t] = nn.functional.l1_loss(self.compute_H(ut_pred), H0)
+        
         loss = losses @ self.weights
         
-        loss_H = H_losses.sum()
+#         loss_H = H_losses.sum()
 #         loss += self.H_strength * loss_H  # disable H gradient computation for now 
         loss_S = S_losses.sum()
         loss += self.S_strength * self.Delta_t * loss_S
@@ -467,7 +490,8 @@ class SolutionMapBase(GenericModel):
         for t in range(self.sequence_len):
             metrics[f'loss_step{t+1}'] = losses[t].detach()
             metrics[f'traj_err_step{t+1}'] = traj_errors[t].detach()
-        metrics['loss_H'] = loss_H.detach()
+            metrics[f'H_err_step{t+1}'] = H_errors[t].detach()
+#         metrics['loss_H'] = loss_H.detach()
         metrics['loss_S'] = loss_S.detach()
         return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
 
@@ -537,13 +561,17 @@ class SolutionMap(SolutionMapBase):
     
     def get_sequence_predictions(self, u0, sequence_len):
         res = []
+        res_hs = []
+
         hidden = self.i2h(u0)
         for _ in range(sequence_len):
-            hidden = self.h2h(hidden)
+            hidden, hs = self.h2h(hidden, return_hidden=True)
             out = self.h2o(hidden)
             out = out + self.friction(out)
             res.append(out)
-        return res
+            res_hs.append(hs) 
+
+        return res, res_hs
 
 
 class CorrectionOperator(SolutionMapBase):
