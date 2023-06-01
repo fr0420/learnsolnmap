@@ -1,0 +1,34 @@
+#!/bin/bash
+
+#SBATCH -N 1                    # Total number of nodes requested 
+#SBATCH -n 48                   # Total number of cores requested 
+#SBATCH -o logs/job.%j.out      # Name of stdout file (%j expands to jobId)
+#SBATCH -e logs/err.%j.out      # Name of stderr file (%j expands to jobId)
+#SCATCH -J parareal             # Job name
+#SBATCH -p v100                 # Submission queue
+#SBATCH -A ML-Nav               # Project name (allocation)
+#SBATCH -t 24:00:00             # Max run time 
+
+#SBATCH --mail-user=rfang@utexas.edu    # Desired email address
+#SBATCH --mail-type=begin               # Send email at job start 
+
+
+PROBLEM=fpu
+T_INIT=0.
+T_END=10.
+N=10
+N_FINE=200000
+N_ITERS=10
+METHOD=CalvoSanz4
+NUM_WORKERS=10
+OUTPUT_DIR=./fpu/202303060209
+NN_CHECKPOINT=/work/08170/rfang/maverick2/learnsolnmap/solutionmap/15xywl3k/checkpoints/epoch19995-val_loss7.553e-06.ckpt
+
+
+module load python3
+
+export PATH="$WORK/downloads/julia-1.8.2/bin:$PATH"
+
+LD_LIBRARY_PATH="" julia run_plain_nn.jl $PROBLEM $T_INIT $T_END $N $N_FINE $N_ITERS $METHOD $OUTPUT_DIR $NUM_WORKERS $NN_CHECKPOINT &&
+
+wait
