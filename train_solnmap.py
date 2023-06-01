@@ -5,7 +5,7 @@ import math
 import pandas as pd
 import datetime
 import torch
-from torch.utils.data import TensorDataset, DataLoader, random_split
+from torch.utils.data import TensorDataset, DataLoader, random_split, Subset 
 from model import SolutionMap
 from torch import nn
 import pytorch_lightning as pl
@@ -64,8 +64,6 @@ def get_dataset(data_dir, sequence_len):
     data = []
     for fname in filenames: 
         u = pd.read_csv(os.path.join(data_dir, fname)).to_numpy()
-      #  v, x = u[:, :14], u[:, 14:]
-      #  u = np.concatenate((v/100., x), axis=1)
         data.append(torch.tensor(u))
     ds = TensorDataset(*data)
     return ds
@@ -83,14 +81,18 @@ if __name__ == '__main__':
     ap.add_argument('--h2h_layer_sizes', default=[1000, 1000], nargs='+', type=int, help='h2h layer sizes')
     ap.add_argument('--i2h_layer_sizes', default=None, nargs='+', type=int, help='i2h layer sizes')
     ap.add_argument('--h2o_layer_sizes', default=None, nargs='+', type=int, help='h2o layer sizes')
+    ap.add_argument('--activation', default='ELU', help='activation function')
     ap.add_argument('--sequence_weights', default=[1, 1, 1, 1, 1], nargs='+', type=int, help='sequence weights')
     ap.add_argument('--WS_strength', default=0., type=float, help='weight smoothness regularization strength')
     ap.add_argument('--S_strength', default=0., type=float, help='lagrangian regularization strength')
+    ap.add_argument('--V_strength', default=0., type=float, help='transport cost regularization strength')
     ap.add_argument('--lr', default=1e-4, type=float, help='learning rate')
+    ap.add_argument('--lr_decay', default=1e-3, type=float, help='dacay rate of lambda lr scheduler')
     ap.add_argument('--num_epochs', default=1000, type=int, help='number of epochs')
+    ap.add_argument('--steps_per_cycle', default=200000, type=int, help='steps per cycle of the custom cyclic lr scheduler')
     ap.add_argument('--gpus', default=[0], nargs='+', type=int, help='gpus')
     ap.add_argument('--resume_from_ckpt', default=None, help='resume from checkpoint')
-    ap.add_argument('--init_model_ckpt', default=None, help'initialize model with checkpoint')
+    ap.add_argument('--init_model_ckpt', default=None, help='initialize model with checkpoint')
     args = ap.parse_args()
     
     # Config dictionary
@@ -105,26 +107,33 @@ if __name__ == '__main__':
         h2h_layer_sizes = args.h2h_layer_sizes,
         i2h_layer_sizes = args.i2h_layer_sizes,
         h2o_layer_sizes = args.h2o_layer_sizes,
-        activation_fn = 'ELU',
+        activation_fn = args.activation,
         activation_kwargs = {},
         use_bn = False,
         use_scale = True,
-        loss_fn = 'MSELoss',
+        init_gamma = 0.,
+    #     loss_fn = 'MSELoss', loss_kwargs = {},
+        loss_fn = 'MeanEnergyNormSquaredLoss',
+        loss_kwargs = {'problem': args.group, 'problem_kwargs': {'Omega': 300}},
         optimizer_fn = 'AdamW',
     #     optimizer_fn = 'SGD',
+    #     optimizer_kwargs = {},
         optimizer_kwargs = {'lr': args.lr, 'weight_decay': 1e-2}, 
-    #     optimizer_kwargs = {'lr': 1e-2, 'momentum': 0.9, 'weight_decay': 1e-4}, 
+    #     optimizer_kwargs = {'lr': args.lr, 'nesterov': False, 'momentum': 0.}, 
     #     lr_scheduler_fn = None, lr_scheduler_kwargs = {},
-    #     lr_scheduler_fn = 'CyclicLR',
-    #     lr_scheduler_kwargs = {'brase_lr': 1e-5, 'max_lr': 1e-3, 'step_size_up': 50000, 'step_size_down': 50000, 'mode': 'triangular2', 'cycle_momentum': True},
         lr_scheduler_fn = 'OneCycleLR',
         lr_scheduler_kwargs = {'max_lr': args.lr, 'epochs': args.num_epochs, 'steps_per_epoch': int(math.ceil(160000/args.batch_size)), 'anneal_strategy': 'cos', 'cycle_momentum': False, 'three_phase': False, 'pct_start': 0.3},
     #     lr_scheduler_fn = 'ReduceLROnPlateau',
     #     lr_scheduler_kwargs = {'factor': 0.85, 'patience': 5, 'cooldown': 5},
+    #     lr_scheduler_fn = 'LambdaLR', 
+    #     lr_scheduler_kwargs = {'lr_lambda': lambda epoch: 1./(1.+args.lr_decay*epoch)},
+    #     lr_scheduler_fn = 'CustomCyclicLR', 
+    #     lr_scheduler_kwargs = {'steps_per_cycle': args.steps_per_cycle, 'mult_factor': 1.5, 'base_lr': 0.0001, 'max_lr': args.lr, 'scale_mode': 'iterations', 'pct_start': 0.3, 'base_lr_scale_fn': lambda i: 0.999997**i, 'max_lr_scale_fn': lambda i: 0.999997**i, 'anneal_strategy': 'cos'}, 
         lr_scheduler_interval = 'step',
         H_strength = 0.,
         WS_strength = args.WS_strength,
         S_strength = args.S_strength, 
+        V_strength = args.V_strength, 
         sequence_weights = args.sequence_weights,
         sequence_len = len(args.sequence_weights),
         n1 = 3,
@@ -140,17 +149,20 @@ if __name__ == '__main__':
     # Get datasets
     ds_train = get_dataset(CONFIG['train_dir'], CONFIG['sequence_len'])
     ds_test = get_dataset(CONFIG['test_dir'], CONFIG['sequence_len'])
+    
+    # ds_train = Subset(ds_train, range(len(ds_train)//5))
 
     print("U_n (n=0,1,...,{0}) train: {1}".format(len(ds_train[:])-1, ds_train[:][0].shape))
     print("U_n (n=0,1,...,{0}) test: {1}".format(len(ds_test[:])-1, ds_test[:][0].shape))
 
-    train_loader = DataLoader(ds_train, batch_size=CONFIG['batch_size'], shuffle=True, num_workers=4, pin_memory=True)
-    test_loader = DataLoader(ds_test, batch_size=CONFIG['batch_size'], shuffle=False, num_workers=4, pin_memory=True)
+    train_loader = DataLoader(ds_train, batch_size=CONFIG['batch_size'], shuffle=True, num_workers=4, pin_memory=False)
+    test_loader = DataLoader(ds_test, batch_size=CONFIG['batch_size'], shuffle=False, num_workers=4, pin_memory=False)
 
     # Define checkpoint callback
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         monitor='val/loss',
         save_top_k=3,
+    #     every_n_epochs=10,
         save_last=True,
         save_weights_only=False,
         dirpath=None,
@@ -168,40 +180,35 @@ if __name__ == '__main__':
 
 
     # Initialize model 
+    lit_model = SolutionMap(
+        h2h_model_name=CONFIG['h2h_model'],
+        h2h_layer_sizes=CONFIG['h2h_layer_sizes'], 
+        i2h_layer_sizes=CONFIG['i2h_layer_sizes'], 
+        h2o_layer_sizes=CONFIG['h2o_layer_sizes'], 
+        activation_fn=CONFIG['activation_fn'],
+        activation_kwargs=CONFIG['activation_kwargs'],
+        use_bn=CONFIG['use_bn'],
+        use_scale=CONFIG['use_scale'],
+        init_gamma=CONFIG['init_gamma'], 
+        loss_fn=CONFIG['loss_fn'],
+        loss_kwargs=CONFIG['loss_kwargs'],
+        optimizer_fn=CONFIG['optimizer_fn'],
+        optimizer_kwargs=CONFIG['optimizer_kwargs'],
+        lr_scheduler_fn=CONFIG['lr_scheduler_fn'],
+        lr_scheduler_kwargs=CONFIG['lr_scheduler_kwargs'],
+        lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
+        H_strength=CONFIG['H_strength'],
+        WS_strength=CONFIG['WS_strength'],
+        S_strength=CONFIG['S_strength'],
+        V_strength=CONFIG['V_strength'],
+        problem=CONFIG['group'],
+        Delta_t=CONFIG['Delta_t'],
+    ).double()
+
     if args.init_model_ckpt is not None:
-        lit_model = SolutionMap.load_from_checkpoint(args.init_model_ckpt,
-            loss_fn=CONFIG['loss_fn'],
-            optimizer_fn=CONFIG['optimizer_fn'],
-            optimizer_kwargs=CONFIG['optimizer_kwargs'],
-            lr_scheduler_fn=CONFIG['lr_scheduler_fn'],
-            lr_scheduler_kwargs=CONFIG['lr_scheduler_kwargs'],
-            lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
-            H_strength=CONFIG['H_strength'],
-            WS_strength=CONFIG['WS_strength'],
-            S_strength=CONFIG['S_strength'],
-        ).double()
-    else:
-        lit_model = SolutionMap(
-            h2h_model_name=CONFIG['h2h_model'],
-            h2h_layer_sizes=CONFIG['h2h_layer_sizes'], 
-            i2h_layer_sizes=CONFIG['i2h_layer_sizes'], 
-            h2o_layer_sizes=CONFIG['h2o_layer_sizes'], 
-            activation_fn=CONFIG['activation_fn'],
-            activation_kwargs=CONFIG['activation_kwargs'],
-            use_bn=CONFIG['use_bn'],
-            use_scale=CONFIG['use_scale'],
-            loss_fn=CONFIG['loss_fn'],
-            optimizer_fn=CONFIG['optimizer_fn'],
-            optimizer_kwargs=CONFIG['optimizer_kwargs'],
-            lr_scheduler_fn=CONFIG['lr_scheduler_fn'],
-            lr_scheduler_kwargs=CONFIG['lr_scheduler_kwargs'],
-            lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
-            H_strength=CONFIG['H_strength'],
-            WS_strength=CONFIG['WS_strength'],
-            S_strength=CONFIG['S_strength'],
-            problem=CONFIG['group'],
-            Delta_t=CONFIG['Delta_t'],
-        ).double()
+        checkpoint = torch.load(args.init_model_ckpt)
+        lit_model.load_state_dict(checkpoint["state_dict"], strict=False)
+
 
     # Initialize W&B logger 
     if args.resume_from_ckpt is not None: 

@@ -82,18 +82,21 @@ if __name__ == '__main__':
     ap.add_argument('--batch_size', default=100, type=int, help='batch size')
     ap.add_argument('--model', default='ResMLP', help='model (MLP, ResMLP, or HamiltonianReversibleNetwork)')
     ap.add_argument('--layer_sizes', default=[28, 1000, 1000, 28], nargs='+', type=int, help='layer sizes')
-    ap.add_argument('--ws_strength', default=0., type=float, help='weight smoothness regularization strength')
+    ap.add_argument('--WS_strength', default=0., type=float, help='weight smoothness regularization strength')
+    ap.add_argument('--S_strength', default=0., type=float, help='lagrangian regularization strength')
     ap.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     ap.add_argument('--num_epochs', default=1000, type=int, help='number of epochs')
     ap.add_argument('--sequence_weights', default=[1, 1, 1, 1, 1], nargs='+', type=int, help='sequence weights')
     ap.add_argument('--gpus', default=[0], nargs='+', type=int, help='gpus')
     ap.add_argument('--resume_from_ckpt', default=None, help='resume from checkpoint')
     ap.add_argument('--init_model_ckpt', default=None, help='initialize model with checkpoint')
+    ap.add_argument('--omega', default=300, type=int, help='fpu problem hyperparameter')
     args = ap.parse_args()
     
     # Config dictionary
     CONFIG = dict (
         group = args.group,
+        problem_kwargs = {'Omega': args.omega},
         Delta_t = args.Delta_t,
         coarse_h = args.coarse_h,
         seed = args.random_seed,
@@ -120,7 +123,8 @@ if __name__ == '__main__':
     #     lr_scheduler_kwargs = {'factor': 0.85, 'patience': 5, 'cooldown': 5},
         lr_scheduler_interval = 'step',
         H_strength = 0.,
-        WS_strength = args.ws_strength,
+        WS_strength = args.WS_strength,
+        S_strength = args.S_strength,
         sequence_weights = args.sequence_weights,
         sequence_len = len(args.sequence_weights),
 #         n1 = 3,
@@ -172,7 +176,8 @@ if __name__ == '__main__':
             lr_scheduler_kwargs=CONFIG['lr_scheduler_kwargs'],
             lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
             H_strength=CONFIG['H_strength'],
-            WS_strength=CONFIG['WS_strength']
+            WS_strength=CONFIG['WS_strength'],
+            S_strength=CONFIG['S_strength'],
         ).double()    
     else:
         lit_model = CorrectionOperator(
@@ -190,7 +195,9 @@ if __name__ == '__main__':
             lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
             H_strength=CONFIG['H_strength'],
             WS_strength=CONFIG['WS_strength'],
+            S_strength=CONFIG['S_strength'],
             problem=CONFIG['group'],
+            problem_kwargs=CONFIG['problem_kwargs'],
             Delta_t=CONFIG['Delta_t'],
             coarse_h=CONFIG['coarse_h'],
         ).double()
