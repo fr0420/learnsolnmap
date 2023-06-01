@@ -53,5 +53,12 @@ venv.bak/
 data/
 solutionmap/
 lightning_logs/
+wandb/
 checkpoints/
 res/
+
+### Job logs 
+
+logs/
+parareal/logs/
+
