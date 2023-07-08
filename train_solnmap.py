@@ -2,12 +2,11 @@ import argparse
 import os 
 import numpy as np
 import math 
-import pandas as pd
 import datetime
 import torch
-from torch.utils.data import TensorDataset, DataLoader, random_split, Subset 
-from model import SolutionMap
 from torch import nn
+from data import DataModule 
+from model import SolutionMap
 import pytorch_lightning as pl
 from pytorch_lightning import seed_everything
 from pytorch_lightning.loggers import WandbLogger
@@ -48,26 +47,6 @@ class RandomizedSequenceWeights(Callback):
         indices = torch.multinomial(self.prob, self.n2)
         random_weights = nn.functional.one_hot(indices, num_classes=self.sequence_len).sum(dim=0)
         pl_module.set_sequence_weights((random_weights + self.base_weights)*self.base_factors)
-
-
-
-def split_dataset(ds, train_fraction, seed):
-    n_full = len(ds)
-    n_train = int(train_fraction*n_full)
-    n_test = n_full - n_train 
-    ds_train, ds_test = random_split(ds, [n_train, n_test], generator=torch.Generator().manual_seed(seed))
-    return ds_train, ds_test 
-
-
-def get_dataset(data_dir, sequence_len):
-
-    filenames = [f"U{n}.csv" for n in range(sequence_len+1)]
-    data = []
-    for fname in filenames: 
-        u = pd.read_csv(os.path.join(data_dir, fname)).to_numpy()
-        data.append(torch.tensor(u))
-    ds = TensorDataset(*data)
-    return ds
 
 
 if __name__ == '__main__':
@@ -149,17 +128,8 @@ if __name__ == '__main__':
     # Seed everything
     seed_everything(CONFIG['seed'])
 
-    # Get datasets
-    ds_train = get_dataset(CONFIG['train_dir'], CONFIG['sequence_len'])
-    ds_test = get_dataset(CONFIG['test_dir'], CONFIG['sequence_len'])
-    
-    # ds_train = Subset(ds_train, range(len(ds_train)//5))
-
-    print("U_n (n=0,1,...,{0}) train: {1}".format(len(ds_train[:])-1, ds_train[:][0].shape))
-    print("U_n (n=0,1,...,{0}) test: {1}".format(len(ds_test[:])-1, ds_test[:][0].shape))
-
-    train_loader = DataLoader(ds_train, batch_size=CONFIG['batch_size'], shuffle=True, num_workers=4, pin_memory=False)
-    test_loader = DataLoader(ds_test, batch_size=CONFIG['batch_size'], shuffle=False, num_workers=4, pin_memory=False)
+    # Get data
+    data_module = DataModule(CONFIG['train_dir'], CONFIG['test_dir'], CONFIG['sequence_len'], CONFIG['batch_size'])
 
     # Define checkpoint callback
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
@@ -243,9 +213,9 @@ if __name__ == '__main__':
 
     # Fit data 
     if args.resume_from_ckpt is not None:
-        trainer.fit(lit_model, train_loader, test_loader, ckpt_path=args.resume_from_ckpt)
+        trainer.fit(lit_model, datamodule=data_module, ckpt_path=args.resume_from_ckpt)
     else:
-        trainer.fit(lit_model, train_loader, test_loader)
+        trainer.fit(lit_model, datamodule=data_module)
 
     print("Best model saved to:\n", checkpoint_callback.best_model_path)
 
