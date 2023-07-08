@@ -12,6 +12,7 @@ import pytorch_lightning as pl
 from pytorch_lightning import seed_everything
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import Callback
+from pytorch_lightning.profilers import AdvancedProfiler
 
 
 print('Using pytorch', torch.__version__)
@@ -73,6 +74,7 @@ if __name__ == '__main__':
     
     ap = argparse.ArgumentParser()
     ap.add_argument('--group', default='lennardjones', help='problem name')
+    ap.add_argument('--omega', default=300, type=float, help='FPU problem parameter')
     ap.add_argument('--Delta_t', default=1e-2, type=float, help='Delta t')
     ap.add_argument('--random_seed', default=42, type=int, help='random seed')
     ap.add_argument('--data_dir', default='.', help='data directory')
@@ -98,6 +100,7 @@ if __name__ == '__main__':
     # Config dictionary
     CONFIG = dict (
         group = args.group,
+        problem_kwargs = {'Omega': args.omega},
         Delta_t = args.Delta_t,
         seed = args.random_seed,
         train_dir = os.path.join(args.data_dir, 'train'),
@@ -114,7 +117,7 @@ if __name__ == '__main__':
         init_gamma = 0.,
     #     loss_fn = 'MSELoss', loss_kwargs = {},
         loss_fn = 'MeanEnergyNormSquaredLoss',
-        loss_kwargs = {'problem': args.group, 'problem_kwargs': {'Omega': 300}},
+        loss_kwargs = {'problem': args.group, 'problem_kwargs': {'Omega': args.omega}},
         optimizer_fn = 'AdamW',
     #     optimizer_fn = 'SGD',
     #     optimizer_kwargs = {},
@@ -139,7 +142,7 @@ if __name__ == '__main__':
         n1 = 3,
         n2 = 2,
         gpus = args.gpus,
-        strategy = None,
+        strategy = 'auto',
         num_epochs = args.num_epochs
     )
 
@@ -160,7 +163,7 @@ if __name__ == '__main__':
 
     # Define checkpoint callback
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        monitor='val/loss',
+        monitor='val_loss',
         save_top_k=3,
     #     every_n_epochs=10,
         save_last=True,
@@ -202,6 +205,7 @@ if __name__ == '__main__':
         S_strength=CONFIG['S_strength'],
         V_strength=CONFIG['V_strength'],
         problem=CONFIG['group'],
+        problem_kwargs=CONFIG['problem_kwargs'],
         Delta_t=CONFIG['Delta_t'],
     ).double()
 
@@ -220,7 +224,8 @@ if __name__ == '__main__':
 
     # Initialize trainer
     trainer = pl.Trainer(
-        gpus=CONFIG['gpus'],
+        accelerator='gpu',
+        devices=CONFIG['gpus'],
         strategy=CONFIG['strategy'],
         max_epochs=CONFIG['num_epochs'],
         logger=wandb_logger,
@@ -229,7 +234,8 @@ if __name__ == '__main__':
     #                randomized_seq_weights,
                    lr_monitor, 
                    checkpoint_callback
-                  ], 
+                  ],
+        profiler=AdvancedProfiler(dirpath=".", filename="prof_logs"),
     )
 
     # Log gradients and model topology

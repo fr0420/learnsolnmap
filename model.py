@@ -242,15 +242,21 @@ class HamiltonianReversibleNetwork(nn.Module):
                 [nn.BatchNorm1d(self.layer_sizes[i+1]) for i in range(len(self.layer_sizes)-2)]
             )
         
-    def forward(self, x):
+    def forward(self, x, return_hidden=False):
+        hs = []
         for i in range(len(self.layers)-1):
             x = self.layers[i](x)
             if self.use_bn:
                 x = self.bn_layers[i](x)
             if not isinstance(self.layers[i], HamiltonianReversibleBlock):
                 x = self.activation(x)
+            if return_hidden:
+                hs.append(x)
         x = self.layers[-1](x)
-        return x
+        if return_hidden:
+            return x, hs
+        else:
+            return x
     
     def compute_weight_smoothness(self):
         s = 0.
@@ -330,25 +336,32 @@ class GenericModel(pl.LightningModule):
         self.lr_scheduler_kwargs = lr_scheduler_kwargs
         self.lr_scheduler_interval = lr_scheduler_interval
 
+        self.training_step_outputs = [] 
+        self.validation_step_outputs = []
+        self.test_step_outputs = []
+
     def training_step(self, batch, batch_idx):
         pass
         
-    def training_epoch_end(self, outputs):
-        self._shared_epoch_end(outputs, 'train')
-        
-    def validation_step(self, batch, batch_idx):
-        return self._shared_eval_step(batch, batch_idx)
+    def on_train_epoch_end(self):
+        self._shared_epoch_end(self.training_step_outputs, 'train')
+        self.training_step_outputs.clear()
 
-    def validation_epoch_end(self, outputs):
-        self._shared_epoch_end(outputs, 'val')
-    
+    def validation_step(self, batch, batch_idx):
+        return self._shared_eval_step(batch, batch_idx, 'val')
+
+    def on_validation_epoch_end(self):
+        self._shared_epoch_end(self.validation_step_outputs, 'val')
+        self.validation_step_outputs.clear()
+
     def test_step(self, batch, batch_idx):
-        return self._shared_eval_step(batch, batch_idx)
+        return self._shared_eval_step(batch, batch_idx, 'test')
     
-    def test_epoch_end(self, outputs):
-        self._shared_epoch_end(outputs, 'test')
-        
-    def _shared_eval_step(self, batch, batch_idx):
+    def on_test_epoch_end(self):
+        self._shared_epoch_end(self.test_step_outputs, 'test')
+        self.test_step_outputs.clear()
+
+    def _shared_eval_step(self, batch, batch_idx, stage=None):
         pass
     
     def _shared_epoch_end(self, outputs, stage=None):
@@ -362,8 +375,8 @@ class GenericModel(pl.LightningModule):
         for m in metrics.keys():
             logs['/'.join([stage, m])] = metrics[m].detach().item()
         if self.trainer.is_global_zero:
-            self.log_dict(logs, rank_zero_only=True)
-        
+            self.log_dict(logs, sync_dist=True, rank_zero_only=True)
+
     def configure_optimizers(self):
         optimizer = self.optimizer_fn(self.parameters(), **self.optimizer_kwargs)
         if self.lr_scheduler_fn is not None:
@@ -443,7 +456,7 @@ class SolutionMapBase(GenericModel):
 #         loss_d = torch.mean((d-1)**2)
 #         loss += loss_d
         
-        self.log('step_loss', loss, on_step=True, on_epoch=False, prog_bar=True)
+        self.log('step_loss', loss, on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
         metrics = {'loss': loss.detach()}
         for t in range(self.sequence_len):
             metrics[f'loss_step{t+1}'] = losses[t].detach()
@@ -453,9 +466,13 @@ class SolutionMapBase(GenericModel):
 #         metrics['loss_H'] = loss_H.detach()
         metrics['loss_S'] = loss_S.detach()
         metrics['loss_V'] = loss_V.detach()
+        
+        self.training_step_outputs.append({'batch_size': len(batch[0]), 'metrics': metrics})
+        
         return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
-  
-    def _shared_eval_step(self, batch, batch_idx):
+        #return loss 
+
+    def _shared_eval_step(self, batch, batch_idx, stage=None):
         losses = torch.zeros(self.sequence_len).to(batch[0])
         self.weights = self.weights.type_as(losses)
   #       H_losses = torch.zeros(2).to(batch[0]) 
@@ -493,7 +510,14 @@ class SolutionMapBase(GenericModel):
             metrics[f'H_err_step{t+1}'] = H_errors[t].detach()
 #         metrics['loss_H'] = loss_H.detach()
         metrics['loss_S'] = loss_S.detach()
+
+        if stage == 'val': 
+            self.validation_step_outputs.append({'batch_size': len(batch[0]), 'metrics': metrics})
+            self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True, batch_size=len(batch[0]))
+        elif stage == 'test': 
+            self.test_step_outputs.append({'batch_size': len(batch[0]), 'metrics': metrics})
         return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
+        #return loss
 
     
 class SolutionMap(SolutionMapBase):
