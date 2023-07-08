@@ -3,6 +3,7 @@ Fermi-Pasta-Ulam Problem
 """
 
 using StaticArrays
+using MultiFloats
 
 const m = 3;
 
@@ -127,7 +128,7 @@ end
 
 
 
-# using NL2sol
+using NL2sol
 
 const Lengthz = 4*m+1;
 
@@ -184,13 +185,33 @@ function Jac_dq(q::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
 end
 
                 
-# function recover_canonical_vars(z::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
+function recover_canonical_vars(z::AbstractArray{T, 1}, q_guess::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
     
-#     p = z[1:2*m]
-#     dq = z[2*m+1:end]
+    p = z[1:2*m]
+    dq = z[2*m+1:end]
     
-#     res = nl2sol((q,r)->compute_dq(q; omega=omega).-dq, (q,r)->Jac_dq(q; omega=omega), q0, 2*m+1; quiet=true)
-#     q = res.minimum 
+    if T <: MultiFloat
+        dq = convert.(Float64, dq)
+        q_guess = convert.(Float64, q_guess)
+        omega = convert(Float64, omega)
+    end 
     
-#     return p, q
-# end
+    function residual(q, r)
+        r[:] = compute_dq(q; omega=omega) .- dq
+        return r
+    end
+
+    function jacobian(q, jac)
+        jac[:, :] = Jac_dq(q; omega=omega)
+        return jac
+    end
+    
+    res = nl2sol(residual, jacobian, q_guess, 2*m+1; quiet=true)
+    q = res.minimum 
+    
+    if T <: MultiFloat
+        q = convert.(T, q)
+    end
+    
+    return p, q
+end
