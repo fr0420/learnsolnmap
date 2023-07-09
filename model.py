@@ -372,6 +372,7 @@ class GenericModel(pl.LightningModule):
         
         metrics = {m: aggregate_outputs(m) for m in outputs[0]['metrics'].keys()}
         logs = dict()
+        logs[f'{stage}/batch_size'] = outputs[0]['batch_size']
         for m in metrics.keys():
             logs['/'.join([stage, m])] = metrics[m].detach().item()
         if self.trainer.is_global_zero:

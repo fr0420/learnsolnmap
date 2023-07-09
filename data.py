@@ -33,7 +33,7 @@ class DataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
 
-    def setup(self):
+    def setup(self, stage):
         self.ds_train = get_dataset(self.train_dir, self.sequence_len)
         self.ds_test = get_dataset(self.test_dir, self.sequence_len)
     
@@ -43,7 +43,15 @@ class DataModule(pl.LightningDataModule):
         print("U_n (n=0,1,...,{0}) test: {1}".format(len(self.ds_test[:])-1, self.ds_test[:][0].shape))
 
     def train_dataloader(self):
-        return DataLoader(self.ds_train, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers, pin_memory=False)
+        if self.trainer.current_epoch < 400:
+            batch_size = 100
+        elif self.trainer.current_epoch < 1000:
+            batch_size = 200
+        elif self.trainer.current_epoch < 2200:
+            batch_size = 400
+        else:
+            pass
+        return DataLoader(self.ds_train, batch_size=batch_size, shuffle=True, num_workers=self.num_workers, pin_memory=False)
 
     def val_dataloader(self):
         return DataLoader(self.ds_test, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, pin_memory=False)

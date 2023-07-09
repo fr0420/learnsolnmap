@@ -104,13 +104,16 @@ if __name__ == '__main__':
     #     optimizer_kwargs = {'lr': args.lr, 'nesterov': False, 'momentum': 0.}, 
     #     lr_scheduler_fn = None, lr_scheduler_kwargs = {},
         lr_scheduler_fn = 'OneCycleLR',
-        lr_scheduler_kwargs = {'max_lr': args.lr, 'epochs': args.num_epochs, 'steps_per_epoch': int(math.ceil(160000/args.batch_size)), 'anneal_strategy': 'cos', 'cycle_momentum': False, 'three_phase': False, 'pct_start': 0.3},
+        lr_scheduler_kwargs = {'max_lr': args.lr, 
+            'total_steps': 1600000,
+    #         'epochs': args.num_epochs, 'steps_per_epoch': int(math.ceil(160000/args.batch_size)), 
+            'anneal_strategy': 'cos', 'cycle_momentum': False, 'three_phase': False, 'pct_start': 0.3},
     #     lr_scheduler_fn = 'ReduceLROnPlateau',
     #     lr_scheduler_kwargs = {'factor': 0.85, 'patience': 5, 'cooldown': 5},
     #     lr_scheduler_fn = 'LambdaLR', 
     #     lr_scheduler_kwargs = {'lr_lambda': lambda epoch: 1./(1.+args.lr_decay*epoch)},
     #     lr_scheduler_fn = 'CustomCyclicLR', 
-    #     lr_scheduler_kwargs = {'steps_per_cycle': args.steps_per_cycle, 'mult_factor': 1.5, 'base_lr': 0.0001, 'max_lr': args.lr, 'scale_mode': 'iterations', 'pct_start': 0.3, 'base_lr_scale_fn': lambda i: 0.999997**i, 'max_lr_scale_fn': lambda i: 0.999997**i, 'anneal_strategy': 'cos'}, 
+    #     lr_scheduler_kwargs = {'steps_per_cycle': args.steps_per_cycle, 'mult_factor': 1.0, 'base_lr': 0.0001, 'max_lr': args.lr, 'scale_mode': 'iterations', 'pct_start': 0.3, 'base_lr_scale_fn': lambda i: 0.999997**i, 'max_lr_scale_fn': lambda i: 0.999997**i, 'anneal_strategy': 'cos'}, 
         lr_scheduler_interval = 'step',
         H_strength = 0.,
         WS_strength = args.WS_strength,
@@ -145,7 +148,7 @@ if __name__ == '__main__':
         mode='min')
 
     # Define learning rate monitor 
-    lr_monitor = pl.callbacks.LearningRateMonitor(logging_interval='step')
+    lr_monitor = pl.callbacks.LearningRateMonitor(logging_interval='step', log_momentum=True)
 
     # Define sequence weights 
     fixed_seq_weights = FixedSequenceWeights(weights=CONFIG['sequence_weights'])
@@ -198,6 +201,7 @@ if __name__ == '__main__':
         devices=CONFIG['gpus'],
         strategy=CONFIG['strategy'],
         max_epochs=CONFIG['num_epochs'],
+        reload_dataloaders_every_n_epochs=1,
         logger=wandb_logger,
         callbacks=[
             fixed_seq_weights,
