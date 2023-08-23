@@ -50,7 +50,7 @@ class DataModule(pl.LightningDataModule):
         elif self.trainer.current_epoch < 2200:
             batch_size = 400
         else:
-            pass
+            batch_size = self.batch_size
         return DataLoader(self.ds_train, batch_size=batch_size, shuffle=True, num_workers=self.num_workers, pin_memory=False)
 
     def val_dataloader(self):

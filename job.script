@@ -1,16 +1,17 @@
 #!/bin/bash
 
 #SBATCH -N 1          		# Total number of nodes requested 
-#SBATCH -n 4	   		# Total number of cores requested 
+#SBATCH --ntasks-per-node 3     # Number of tasks per node 
+#SBATCH --cpus-per-task 8
 #SBATCH -o logs/job.%j.out  	# Name of stdout file (%j expands to jobId)
 #SBATCH -e logs/err.%j.out	# Name of stderr file (%j expands to jobId)
 #SCATCH -J learnsolnmap		# Job name
-#SBATCH -p p100  		# Submission queue
-#SBATCH -A ML-Nav 		# Project name (allocation)
-#SBATCH -t 24:00:00		# Max run time 
+#SBATCH -p gpu-a100  		# Submission queue
+#SBATCH -A ASC23019 		# Project name (allocation)
+#SBATCH -t 48:00:00		# Max run time 
 
 #SBATCH --mail-user=rfang@utexas.edu	# Desired email address
-#SBATCH --mail-type=begin		# Send email at job start 
+#SBATCH --mail-type=all		# Send email at begin and end of job 
 
 LJ_DATA_DIR1=$WORK/solnmap_data/lj/rhmc-H0/dt2e-4_h5e-8/Nchains100_Njumps2000/sigma1e-2/Dt5e-4
 LJ_DATA_DIR2=$WORK/solnmap_data/lj/f-rhmc-H0/dt5e-5_h5e-8/Nchains100_Njumps400_Nsteps4/sigma1e-2/Dt5e-4
@@ -24,17 +25,26 @@ FPU_DATA_DIR4=$WORK/solnmap_data/fpu/omega300/rhmc-H0/css4_dt4e-1_h5e-6_Nchains1
 FPU_DATA_DIR5=$WORK/solnmap_data/fpu/omega300/rhmc-H0/css4_dt4e-1_h5e-6_Nchains100_Njumps2000_sigma1e-1/ma5_Dt1e0_h1.5259e-5
 FPU_DATA_DIR6=$WORK/solnmap_data/fpu/omega300/hmc-H0/VelocityVerlet_dt4e-1_h5e-3_Nchains100_Njumps2000_sigma1e-1/Dt1e-1
 FPU_DATA_DIR7=$WORK/solnmap_data/fpu/omega10/rhmc-H0/dt4e-1_h5e-6_Nchains100_Njumps2000_sigma1e-1/Dt1e-2
+FPU_DATA_DIR8=$WORK/solnmap_data/fpu/omega50/rhmc-H0/ma5_dt2.5e-1_h1.5259e-5_Nchains100_Njumps2000_sigma1e-1/ma5_Dt1e0_h1.5259e-5/
 
+module load python3
+module load cuda/12.0 
 
-module load python3/3.7.0
+# debugging flags (optional)
+export NCCL_DEBUG=INFO
+export PYTHONFAULTHANDLER=1
 
-# python3 train_solnmap.py --group fpu --Delta_t 1e0 --data_dir $FPU_DATA_DIR4  --h2h_model ResMLP --h2h_layer_sizes 12 1000 1000 1000 1000 12 --sequence_weights 1 1 1 1 1 --num_epochs 5000 --batch_size 100 --lr 1e-5 --lr_decay 2e-3 --S_strength 0  --gpus 0 --resume_from_ckpt /work/08170/rfang/maverick2/learnsolnmap/solutionmap/1a74mfdk/checkpoints/last.ckpt &
-# python3 train_solnmap.py --group fpu --Delta_t 1e0 --data_dir $FPU_DATA_DIR5  --h2h_model ResMLP --h2h_layer_sizes 12 1000 1000 1000 1000 12 --sequence_weights 1 1 1 1 1 --num_epochs 1000 --batch_size 2500 --lr 1e-7   --gpus 0  --init_model_ckpt /work/08170/rfang/maverick2/learnsolnmap/solutionmap/7fxuc2dj/checkpoints/epoch999-val_loss4.501e-05.ckpt &
-# python3 train_solnmap.py --group fpu --Delta_t 1e0 --data_dir $FPU_DATA_DIR5  --h2h_model ResMLP --h2h_layer_sizes 12 1000 1000 1000 1000 12 --sequence_weights 1 1 1 1 1 --num_epochs 1000 --batch_size 2500 --lr 1e-4   --gpus 1  --init_model_ckpt /work/08170/rfang/maverick2/learnsolnmap/solutionmap/7fxuc2dj/checkpoints/epoch999-val_loss4.501e-05.ckpt &
-# python3 train_solnmap.py --group fpu --Delta_t 1e0 --data_dir $FPU_DATA_DIR5  --h2h_model ResMLP --h2h_layer_sizes 12 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 12 --sequence_weights 1 1 1 1 1 --num_epochs 1000 --lr 5e-4 --steps_per_cycle 200000 --V_strength 0  --gpus 0 --resume_from_ckpt /work/08170/rfang/maverick2/learnsolnmap/solutionmap/361b2ke1/checkpoints/last.ckpt &
-python3 train_solnmap.py --group fpu --Delta_t 1e0 --data_dir $FPU_DATA_DIR5  --h2h_model ResMLP --h2h_layer_sizes 12 1000 1000 1000 1000 12 --sequence_weights 1 1 1 1 1 --num_epochs 25000 --batch_size 2500 --lr 1e-4 --steps_per_cycle 200000 --V_strength 0  --gpus 0  --resume_from_ckpt /work/08170/rfang/maverick2/learnsolnmap/solutionmap/3tha9lgm/checkpoints/last.ckpt &
+# on your cluster you might need these:
+# set the network interface
+#export NCCL_SOCKET_IFNAME=^docker0,lo
+
+#python3 train_solnmap.py --group fpu --omega 50 --Delta_t 1e0 --data_dir $FPU_DATA_DIR8  --h2h_model ResMLP --h2h_layer_sizes 12 1000 1000 1000 1000 12 --sequence_weights 1 1 1 1 1 --num_epochs 5000 --batch_size 100 --lr 5e-4  --gpus 0 --resume_from_ckpt ./solutionmap/e3f2w16n/checkpoints/last.ckpt &
+#python3 train_solnmap.py --group fpu --omega 50 --Delta_t 1e0 --data_dir $FPU_DATA_DIR8  --h2h_model ResMLP --h2h_layer_sizes 12 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 12 --sequence_weights 1 1 1 1 1 --num_epochs 5000 --batch_size 100 --lr 5e-4  --gpus 2 --resume_from_ckpt ./solutionmap/y9n99k6m/checkpoints/last.ckpt &
+python3 train_solnmap.py --group fpu --Delta_t 1e0 --data_dir $FPU_DATA_DIR5  --h2h_model ResMLP --h2h_layer_sizes 12 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 12 --sequence_weights 1 1 1 1 1 --num_epochs 5000 --lr 5e-4 --steps_per_cycle 200000 --V_strength 0  --gpus 0 --resume_from_ckpt ./solutionmap/mgrw0exy/checkpoints/last.ckpt &
+python3 train_solnmap.py --group fpu --Delta_t 1e0 --data_dir $FPU_DATA_DIR5  --h2h_model ResMLP --h2h_layer_sizes 12 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 12 --sequence_weights 1 1 1 1 1 --num_epochs 5000 --lr 5e-4 --steps_per_cycle 200000 --V_strength 0  --gpus 1 --resume_from_ckpt ./solutionmap/668irhmp/checkpoints/last.ckpt &
+# python3 train_solnmap.py --group fpu --omega 50 --Delta_t 1e0 --data_dir $FPU_DATA_DIR8  --h2h_model HamiltonianReversibleNetwork --h2h_layer_sizes 12 2000 2000 2000 2000 12 --sequence_weights 1 1 1 1 1 --num_epochs 1000  --lr 5e-4  --gpus 1 &
 # python3 train_solnmap.py --group fpu --Delta_t 1e0 --data_dir $FPU_DATA_DIR5  --h2h_model ResMLP --h2h_layer_sizes 12 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 12 --sequence_weights 1 1 1 1 1 --num_epochs 1000 --lr 5e-4 --steps_per_cycle 100000 --V_strength 0  --gpus 1  --resume_from_ckpt /work/08170/rfang/maverick2/learnsolnmap/solutionmap/9343ycw5/checkpoints/last.ckpt &
-# python3 train_solnmap.py --group fpu --Delta_t 1e0 --data_dir $FPU_DATA_DIR5  --h2h_model ResMLP --h2h_layer_sizes 12 1000 1000 1000 1000 12 --sequence_weights 1 1 1 1 1 --num_epochs 5000 --batch_size 100 --lr 1e-4 --steps_per_cycle 300000 --V_strength 0  --gpus 1  &
+#python3 train_solnmap.py --group fpu --Delta_t 1e0 --data_dir $FPU_DATA_DIR5  --h2h_model ResMLP --h2h_layer_sizes 12 1000 1000 1000 1000 12 --sequence_weights 1 1 1 1 1 --num_epochs 2200 --batch_size 100 --lr 5e-4 --steps_per_cycle 300000 --V_strength 0  --gpus 1  &
 # python3 train_solnmap.py --group lennardjones --Delta_t 1e-4 --data_dir $LJ_DATA_DIR4  --h2h_model HamiltonianReversibleNetwork --h2h_layer_sizes 28 2000 2000 28 --sequence_weights 1 1 1 1 1 --num_epochs 1000 --batch_size 100 --lr 1e-3 --S_strength 0 --gpus 1  &
 # python3 train_solnmap.py --group lennardjones --Delta_t 1e-4 --data_dir $LJ_DATA_DIR4  --h2h_model HamiltonianReversibleNetwork --h2h_layer_sizes 28 2000 2000 28 --sequence_weights 1 1 1 1 1 --num_epochs 1000 --batch_size 100 --lr 1e-4 --S_strength 0 --gpus 1  &
 # python3 train_solnmap.py --group lennardjones --Delta_t 1e-4 --data_dir $LJ_DATA_DIR4  --h2h_model ResMLP --h2h_layer_sizes 28 1000 1000 1000 1000 28 --sequence_weights 1 1 1 1 1 --num_epochs 1000 --lr 1e-3 --S_strength 0 --gpus 0  &
