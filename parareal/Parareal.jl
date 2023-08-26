@@ -53,7 +53,7 @@ function plain(
         G = [coarse_solve(p[:, n], q[:, n], t_grid[n], dt[n]) for n in 1:N]
         
         @showprogress for n in 1:N
-            pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .+ F[n] .- G[n]
+            pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .- G[n] .+ F[n]
         end
 
         p = pnew
@@ -123,7 +123,7 @@ function sympcorr(
         
         if with_additive
             @showprogress for n in 1:N
-                pnew[:, n+1], qnew[:, n+1] = phi(coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n])..., h) .+ F[n] .- phi(G[n]..., h)
+                pnew[:, n+1], qnew[:, n+1] = phi(coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n])..., h) .- phi(G[n]..., h) .+ F[n] 
             end
         else
             @showprogress for n in 1:N
@@ -201,7 +201,7 @@ function phasecorr(
         
         if with_additive
             @showprogress for n in 1:N
-                pnew[:, n+1], qnew[:, n+1] = Theta(coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n])..., Omega) .+ F[n] .- Theta(G[n]..., Omega)
+                pnew[:, n+1], qnew[:, n+1] = Theta(coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n])..., Omega) .- Theta(G[n]..., Omega) .+ F[n] 
             end
         else
             @showprogress for n in 1:N
@@ -286,7 +286,7 @@ function interpolative(
     end
 
     for n in 1:N
-        pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .+ F[n] .- G[n]
+        pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .- G[n] .+ F[n] 
     end
 
     p = pnew
@@ -323,12 +323,12 @@ function interpolative(
             res = svd(W[:, :, n])
             m = sum(res.S/res.S[1] .> tol)
             if m == 1 
-                pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .+ F[n] .- G[n]
+                pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .- G[n] .+ F[n]
             else 
                 I = K[:, :, n] * res.V[:, 1:m] * Diagonal(1 ./ res.S[1:m]) * res.U[:, 1:m]'
                 corr = I * [pnew[:, n]; qnew[:, n]; 1.]
                 if norm(corr) > 2 * maximum(norm.(eachcol(K[:, :, n])))
-                    pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .+ F[n] .- G[n]
+                    pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .- G[n] .+ F[n]
                 else
                     pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n])
                     pnew[:, n+1] += corr[1:d]
@@ -355,4 +355,3 @@ end
 export plain, sympcorr, phasecorr, interpolative
 
 end
-
