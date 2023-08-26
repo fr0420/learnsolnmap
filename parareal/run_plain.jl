@@ -38,7 +38,7 @@ println("output_dir =      ", output_dir)
 println("# workers =       ", num_workers)
 
 
-include("utils.jl")
+include("../tools/utils.jl")
 include("Parareal.jl")
 using .Parareal
 using Dates
@@ -57,26 +57,36 @@ config = OrderedDict(
 )
 save_config(output_dir, config)
 
-
 @everywhere begin 
     include("../tools/setups/$($problem).jl")
     include("../tools/ode_solver.jl")
     using ProgressMeter 
 
     if $problem == "fpu"
-        param = $use_float64x4 ? (Float64x4($fpu_omega)^2)/2. : ($fpu_omega^2)/2.
+        param = ($fpu_omega^2)/2.
     end 
     
-    fine_solve(p0, q0, t0, H) = ode_solve(A!, methods[$fine_method], p0, q0, t0, H, $Nf, false, param)
     coarse_solve(p0, q0, t0, H) = ode_solve(A!, methods[$coarse_method], p0, q0, t0, H, $Nc, false, param)
+    if $use_float64x4
+        fine_solve(p0, q0, t0, H) = ode_solve(A!, methods[$fine_method], p0, q0, t0, H, $Nf, false, param)
+    else
+        function fine_solve(p0, q0, t0, H)
+            p0 = Float64x4.(p0)
+            q0 = Float64x4.(q0)
+            p, q = ode_solve(A!, methods[$fine_method], p0, q0, t0, H, $Nf, false, param)
+            return Float64.(p), Float64.(q)
+        end
+    end
 end
 
 
+dtype = use_float64x4 ? Float64x4 : Float64
+
 if problem == "fpu"
-    kwargs = Dict(:omega => use_float64x4 ? Float64x4(fpu_omega) : fpu_omega)
+    kwargs = Dict(:omega => fpu_omega)
 end 
 
-p0, q0 = initial_condition(; kwargs...)
+p0, q0 = initial_condition(dtype; kwargs...)
 
 println("\nInitial condition:")
 println("p0: ", p0)
@@ -89,5 +99,4 @@ println("U0: ", compute_U(q0; kwargs...))
 println("\nRunning plain parareal ...")
 t = collect(T_init:DeltaT:T_end)    
 p_all, q_all = Parareal.plain(p0, q0, t, fine_solve, coarse_solve, niters=niters)
-save_solutions(output_dir, t, p_all, q_all)
-    
+save_all_iterations(output_dir, p_all, q_all, dtype)

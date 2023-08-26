@@ -4,6 +4,8 @@ Fermi-Pasta-Ulam Problem
 
 using StaticArrays
 using MultiFloats
+using NL2sol
+# using NonlinearSolve
 
 const m = 3;
 
@@ -85,9 +87,10 @@ end
 
 
 
-function compute_U(q::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
+function compute_U(q::AbstractArray{T, 1}; omega::Float64=300.) where T<:AbstractFloat
     """Compute potential energy"""
-    
+    omega = convert(T, omega)
+
     dq_stiff = q[2:2:end] - q[1:2:end]
     q_pad = vcat([0], q, [0]) 
     dq_soft = q_pad[2:2:end] - q_pad[1:2:end]
@@ -97,16 +100,17 @@ function compute_U(q::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
 end
 
 
-function compute_H(p::AbstractArray{T, 1}, q::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
+function compute_H(p::AbstractArray{T, 1}, q::AbstractArray{T, 1}; omega::Float64=300.) where T<:AbstractFloat
     """Compute total energy / Hamiltonian"""
     
     return compute_K(p) + compute_U(q; omega=omega)
 end
 
 
-function compute_I(p::AbstractArray{T, 1}, q::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
+function compute_I(p::AbstractArray{T, 1}, q::AbstractArray{T, 1}; omega::Float64=300.) where T<:AbstractFloat
     """Compute energy of stiff springs"""
-    
+    omega = convert(T, omega)
+
     dq_stiff = q[2:2:end] - q[1:2:end]
     dp_stiff = p[2:2:end] - p[1:2:end]
     
@@ -114,78 +118,75 @@ function compute_I(p::AbstractArray{T, 1}, q::AbstractArray{T, 1}; omega::T=300.
 end
 
 
-function initial_condition(;omega::T=300.) where T<:AbstractFloat
+function initial_condition(T; omega::Float64=300.)
     """Generate initial condition"""
-    
+    omega = convert(T, omega)
+    sqrt2 = sqrt(convert(T, 2.0))
+
     q0 = zeros(T, 2*m)
     p0 = zeros(T, 2*m)
-    q0[1] = (1 - 1/omega)/sqrt(convert(T, 2.0))
-    q0[2] = (1 + 1/omega)/sqrt(convert(T, 2.0))
-    p0[2] = sqrt(convert(T, 2.0))
+    q0[1] = (1 - 1/omega)/sqrt2
+    q0[2] = (1 + 1/omega)/sqrt2
+    p0[2] = sqrt2
         
     return p0, q0
 end 
 
 
+function compute_dq(q::AbstractArray{T, 1}; omega::Float64=300.) where T<:AbstractFloat
+    omega = convert(T, omega)
+    sqrt2 = sqrt(convert(T, 2.0))
 
-using NL2sol
-
-const Lengthz = 4*m+1;
-
-
-function construct_z(p::AbstractArray{T, 1}, q::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
-    z = zeros(T, Lengthz)
-    z[1:2*m] = p
-    
-    dq_stiff = q[2:2:end] - q[1:2:end]
-    q_pad = vcat([0], q, [0]) 
-    dq_soft = q_pad[2:2:end] - q_pad[1:2:end]
-    
-    z[2*m+1:3*m] = omega / sqrt(2) * dq_stiff
-    z[3*m+1:end] = sqrt(2) * dq_soft.^2
-    
-    return z        
-end
-
-
-function compute_dq(q::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
     dq = zeros(T, 2*m+1)
     
     dq_stiff = q[2:2:end] - q[1:2:end]
     q_pad = vcat([0], q, [0]) 
     dq_soft = q_pad[2:2:end] - q_pad[1:2:end]
     
-    dq[1:m] = omega / sqrt(2) * dq_stiff
-    dq[m+1:end] = sqrt(2) * dq_soft.^2
+    dq[1:m] = omega / sqrt2 * dq_stiff
+    dq[m+1:end] = sqrt2 * dq_soft.^2
     
     return dq
 end 
 
 
-function Jac_dq(q::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
+function Jac_dq(q::AbstractArray{T, 1}; omega::Float64=300.) where T<:AbstractFloat
+    omega = convert(T, omega)
+    sqrt2 = sqrt(convert(T, 2.0))
+
     J = zeros(T, (2*m+1, 2*m))
     
     q_pad = vcat([0], q, [0]) 
     dq_soft = q_pad[2:2:end] - q_pad[1:2:end]
     
     for i in 1:m
-        J[i, 2*i-1] = - omega / sqrt(2)
-        J[i, 2*i] = omega / sqrt(2)
+        J[i, 2*i-1] = - omega / sqrt2
+        J[i, 2*i] = omega / sqrt2
     end 
     
     for i in 2:m
-        J[m+i, 2*i-2] = - 2 * sqrt(2) * dq_soft[i]
-        J[m+i, 2*i-1] = 2 * sqrt(2) * dq_soft[i]
+        J[m+i, 2*i-2] = - 2 * sqrt2 * dq_soft[i]
+        J[m+i, 2*i-1] = 2 * sqrt2 * dq_soft[i]
     end
     
-    J[m+1, 1] = 2 * sqrt(2) * dq_soft[1]
-    J[end, end] = - 2 * sqrt(2) * dq_soft[end]
+    J[m+1, 1] = 2 * sqrt2 * dq_soft[1]
+    J[end, end] = - 2 * sqrt2 * dq_soft[end]
     
     return J
 end
 
-                
-function recover_canonical_vars(z::AbstractArray{T, 1}, q_guess::AbstractArray{T, 1}; omega::T=300.) where T<:AbstractFloat
+
+function construct_z(p::AbstractArray{T, 1}, q::AbstractArray{T, 1}; omega::Float64=300.) where T<:AbstractFloat
+
+    z = zeros(T, 4*m+1)
+    z[1:2*m] = p
+    z[2*m+1:end] = compute_dq(q; omega=omega)    
+    
+    return z        
+end
+
+
+function recover_canonical_vars(z::AbstractArray{T, 1}, q_guess::AbstractArray{T, 1}; omega::Float64=300.) where T<:AbstractFloat
     
     p = z[1:2*m]
     dq = z[2*m+1:end]
@@ -193,7 +194,6 @@ function recover_canonical_vars(z::AbstractArray{T, 1}, q_guess::AbstractArray{T
     if T <: MultiFloat
         dq = convert.(Float64, dq)
         q_guess = convert.(Float64, q_guess)
-        omega = convert(Float64, omega)
     end 
     
     function residual(q, r)
@@ -205,13 +205,20 @@ function recover_canonical_vars(z::AbstractArray{T, 1}, q_guess::AbstractArray{T
         jac[:, :] = Jac_dq(q; omega=omega)
         return jac
     end
-    
+
     res = nl2sol(residual, jacobian, q_guess, 2*m+1; quiet=true)
-    q = res.minimum 
-    
+    q = res.minimum
+
+    # f(u, p) = compute_dq(u; omega=omega) - dq
+    # jac(u, p) = Jac_dq(u; omega=omega)
+    # prob = NonlinearProblem(NonlinearFunction(f; jac=jac), q_guess, nothing)
+    # sol = solve(prob, NewtonRaphson())
+    # q = sol.u
+    # println("residual:", sol.resid)
+
     if T <: MultiFloat
         q = convert.(T, q)
     end
-    
+
     return p, q
 end

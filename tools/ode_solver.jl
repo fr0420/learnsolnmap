@@ -42,5 +42,5 @@ function ode_solve(
 end
 
     
-Base.round(x::MultiFloat{Float64, 4}, y::RoundingMode) = MultiFloat{Float64, 4}(Base.round(Float64(x),y))
-Base.trunc(x::Type{Int64}, y::MultiFloat{Float64, 4}) = Base.trunc(x::Type{Int64}, Float64(y))
+Base.round(x::MultiFloat{Float64, 4}, y::RoundingMode) = MultiFloat{Float64, 4}(Base.round(BigFloat(x),y))
+Base.trunc(x::Type{Integer}, y::MultiFloat{Float64, 4}) = Base.trunc(x::Type{Integer}, BigFloat(y))
