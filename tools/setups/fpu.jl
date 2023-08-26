@@ -5,7 +5,6 @@ Fermi-Pasta-Ulam Problem
 module FPU 
 
 using StaticArrays
-using MultiFloats
 # using NL2sol
 using NonlinearSolve
 
@@ -193,7 +192,7 @@ function recover_canonical_vars(z::AbstractArray{T, 1}, q_guess::AbstractArray{T
     p = z[1:2*m]
     dq = z[2*m+1:end]
     
-    if T <: MultiFloat
+    if T != Float64
         dq = convert.(Float64, dq)
         q_guess = convert.(Float64, q_guess)
     end 
@@ -216,9 +215,9 @@ function recover_canonical_vars(z::AbstractArray{T, 1}, q_guess::AbstractArray{T
     prob = NonlinearProblem(NonlinearFunction(f; jac=jac), q_guess, nothing)
     sol = solve(prob, NewtonRaphson())
     q = sol.u
-    println("residual:", sol.resid)
+    # println("residual:", sol.resid)
 
-    if T <: MultiFloat
+    if T != Float64
         q = convert.(T, q)
     end
 

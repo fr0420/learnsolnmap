@@ -8,6 +8,7 @@ include("../tools/setups/fpu.jl")
 include("Parareal.jl")
 using ArgParse
 using DataStructures
+using Printf
 using .FPU
 using .Parareal
 
@@ -72,26 +73,17 @@ function main()
     DeltaT = (T_end-T_init) / N
     deltat = DeltaT / Nf
 
-    println("problem =         ", problem)
-    println("omega =           ", fpu_omega)
-    println("T_init =          ", T_init)
-    println("T_end =           ", T_end)
-    println("N =               ", N)
-    println("Nf =              ", Nf)
-    println("fine_method =     ", fine_method)
-    println("Delta_T_com =     ", DeltaT)
-    println("fine_stepsize =   ", deltat)
-    println("use_float64x4 =   ", use_float64x4)
-    println("output_dir =      ", output_dir)
-
     config = OrderedDict(
-        "problem"=>problem, "omega"=>fpu_omega,
-        "T_init"=>T_init, "T_end"=>T_end, 
-        "N"=>N, "Nf"=>Nf, 
-        "fine_method"=>fine_method, "use_float64x4"=>use_float64x4,
-        "Delta_T_com"=>DeltaT, "fine_stepsize"=>deltat
+        "problem"=>problem, "omega"=>fpu_omega, "use_float64x4"=>use_float64x4,
+        "T_init"=>T_init, "T_end"=>T_end, "N"=>N, "Delta_T_com"=>DeltaT, 
+        "fine_method"=>fine_method, "Nf"=>Nf, "fine_stepsize"=>deltat
     )
     save_config(output_dir, config)
+
+    for (key, val) in config
+        @printf("%-20s%s\n", "$key =", val)
+    end
+    @printf("%-20s%s\n", "output_dir =", output_dir)
 
     if problem == "fpu"
         kwargs = Dict(:omega => fpu_omega)

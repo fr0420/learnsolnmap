@@ -14,6 +14,7 @@ include("Parareal.jl")
 
 using ArgParse
 using DataStructures
+using Printf
 using .Parareal
 @everywhere using .FPU
 
@@ -119,45 +120,24 @@ function main()
     
     DeltaT = (T_end-T_init) / N
 
-    println("problem =         ", problem)
-    println("fpu_omega =       ", fpu_omega)
-    println("use_float64x4 =   ", use_float64x4)
-    println("output_dir =      ", output_dir)
-    println("T_init =          ", T_init)
-    println("T_end =           ", T_end)
-    println("N =               ", N)
-    println("Delta_T_com =     ", DeltaT)
-    println("niters =          ", niters)
-    println("fine_method =     ", fine_method)
-    println("Nf =              ", Nf)
-    println("fine_stepsize =   ", DeltaT / Nf)
+    config = OrderedDict(
+        "problem"=>problem, "omega"=>fpu_omega, "use_float64x4"=>use_float64x4,
+        "T_init"=>T_init, "T_end"=>T_end, "N"=>N, "Delta_T_com"=>DeltaT, "niters"=>niters,
+        "fine_method"=>fine_method, "Nf"=>Nf, "fine_stepsize"=>DeltaT / Nf)
 
     if isempty(nn_checkpoint_path)
-        println("coarse_method =   ", coarse_method)
-        println("Nc =              ", Nc)
-        println("coarse_stepsize = ", DeltaT / Nc)
-
-        config = OrderedDict(
-            "problem"=>problem, "omega"=>fpu_omega,
-            "T_init"=>T_init, "T_end"=>T_end, 
-            "N"=>N, "Nf"=>Nf, "Nc"=>Nc, "niters"=>niters,
-            "fine_method"=>fine_method, "coarse_method"=>coarse_method, "use_float64x4"=>use_float64x4,
-            "Delta_T_com"=>DeltaT, "fine_stepsize"=>DeltaT / Nf, "coarse_stepsize"=>DeltaT / Nc
-        )
-        save_config(output_dir, config)
+        config["coarse_method"] = coarse_method
+        config["Nc"] = Nc
+        config["coarse_stepsize"] = DeltaT / Nc
     else
-        println("NN_checkpoint_path = ", nn_checkpoint_path)
-
-        config = OrderedDict(
-            "problem"=>problem, "omega"=>fpu_omega,
-            "T_init"=>T_init, "T_end"=>T_end, 
-            "N"=>N, "Nf"=>Nf, "niters"=>niters,
-            "fine_method"=>fine_method,  "use_float64x4"=>use_float64x4, 
-            "Delta_T_com"=>DeltaT, "fine_stepsize"=>DeltaT / Nf, 
-            "NN_checkpoint path"=>nn_checkpoint_path, 
-        )
-        save_config(output_dir, config)
+        config["NN_checkpoint path"] = nn_checkpoint_path
     end
+    save_config(output_dir, config)
+
+    for (key, val) in config
+        @printf("%-20s%s\n", "$key =", val)
+    end
+    @printf("%-20s%s\n", "output_dir =", output_dir)
 
     if problem == "fpu"
         kwargs = Dict(:omega => fpu_omega)
@@ -173,7 +153,8 @@ function main()
         p0, q0, t0, H; func=A!, method=coarse_method, nsteps=Nc, param=param, T2=use_float64x4 ? Float64x4 : Float64
         )
     else
-        coarse_solve = (p0, q0, t0, H) -> nn_solve(p0, q0, load_nn(nn_checkpoint_path))
+        nn_func = load_nn(nn_checkpoint_path)
+        coarse_solve = (p0, q0, t0, H) -> nn_solve(p0, q0, nn_func)
     end
 
     p0, q0 = initial_condition(use_float64x4 ? Float64x4 : Float64; kwargs...)
