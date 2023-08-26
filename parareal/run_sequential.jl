@@ -2,70 +2,117 @@
 Sequential algorithm
 """
 
-const problem = ARGS[1];
-const T_init = parse(Float64, ARGS[2]);
-const T_end = parse(Float64, ARGS[3]);
-const N = parse(Int, ARGS[4]);
-const Nf = parse(Int, ARGS[5]);
-const fine_method = ARGS[6];
-const output_dir = ARGS[7];
-const use_float64x4 = parse(Bool, ARGS[8]);
-const fpu_omega = parse(Float64, ARGS[9]);
-
-DeltaT = (T_end-T_init) / N
-deltat = DeltaT / Nf
-
-println("problem =         ", problem)
-println("omega =           ", fpu_omega)
-println("T_init =          ", T_init)
-println("T_end =           ", T_end)
-println("N =               ", N)
-println("Nf =              ", Nf)
-println("fine method =     ", fine_method)
-println("Delta T com =     ", DeltaT)
-println("fine stepsize =   ", deltat)
-println("use_float64x4 =   ", use_float64x4)
-println("output_dir =      ", output_dir)
-
-
 include("../tools/utils.jl")
-include("Parareal.jl")
-using .Parareal
-using Dates
-using DataStructures
-include("../tools/setups/$problem.jl")
 include("../tools/ode_solver.jl")
+include("../tools/setups/fpu.jl")
+include("Parareal.jl")
+using ArgParse
+using DataStructures
+using .FPU
+using .Parareal
 
 
-config = OrderedDict(
-    "problem"=>problem, "omega"=>fpu_omega,
-    "T_init"=>T_init, "T_end"=>T_end, 
-    "N"=>N, "Nf"=>Nf, 
-    "fine method"=>fine_method, "use_float64x4"=>use_float64x4,
-    "Delta T com"=>DeltaT, "fine stepsize"=>deltat
-)
-save_config(output_dir, config)
+function parse_commandline()
+    s = ArgParseSettings()
 
-dtype = use_float64x4 ? Float64x4 : Float64
+    @add_arg_table! s begin
+        "problem"
+            help = "ode problem name"
+            arg_type = String
+            required = true
+        "T_init"
+            help = "init time"
+            arg_type = Float64
+            required = true
+        "T_end"
+            help = "end time"
+            arg_type = Float64
+            required = true
+        "N"
+            help = "number of intervals"
+            arg_type = Int
+            required = true
+        "--Nf"
+            help = "number of fine steps per interval"
+            arg_type = Int
+            default = 128
+        "--fine_method", "-f"
+            help = "fine solver method"
+            arg_type = String
+            default = "VelocityVerlet"
+        "--output_dir"
+            help = "output directory"
+            arg_type = String
+            default = "./"
+        "--use_float64x4"
+            help = "use Float64x4 for solutions"
+            action = :store_true
+        "--fpu_omega"
+            help = "omega parameter of FPU problem"
+            arg_type = Float64
+            default = 300.
+    end
 
-if problem == "fpu"
-    kwargs = Dict(:omega => fpu_omega)
-    param = convert(dtype, (fpu_omega^2)/2.)
-end 
+    return parse_args(s)
+end
+
+function main()
+    parsed_args = parse_commandline()
     
-fine_solve(p0, q0, t0, H) = ode_solve(A!, methods[fine_method], p0, q0, t0, H, Nf, false, param)
+    problem = parsed_args["problem"]
+    T_init = parsed_args["T_init"]
+    T_end = parsed_args["T_end"]
+    N = parsed_args["N"]
+    Nf = parsed_args["Nf"]
+    fine_method = parsed_args["fine_method"]
+    output_dir = parsed_args["output_dir"]
+    use_float64x4 = parsed_args["use_float64x4"]
+    fpu_omega = parsed_args["fpu_omega"]
 
-p0, q0 = initial_condition(dtype; kwargs...)
+    DeltaT = (T_end-T_init) / N
+    deltat = DeltaT / Nf
 
-println("\nInitial condition:")
-println("p0: ", p0)
-println("q0: ", q0)
-println("H0: ", compute_H(p0, q0; kwargs...))
-println("K0: ", compute_K(p0))
-println("U0: ", compute_U(q0; kwargs...))
+    println("problem =         ", problem)
+    println("omega =           ", fpu_omega)
+    println("T_init =          ", T_init)
+    println("T_end =           ", T_end)
+    println("N =               ", N)
+    println("Nf =              ", Nf)
+    println("fine_method =     ", fine_method)
+    println("Delta_T_com =     ", DeltaT)
+    println("fine_stepsize =   ", deltat)
+    println("use_float64x4 =   ", use_float64x4)
+    println("output_dir =      ", output_dir)
 
+    config = OrderedDict(
+        "problem"=>problem, "omega"=>fpu_omega,
+        "T_init"=>T_init, "T_end"=>T_end, 
+        "N"=>N, "Nf"=>Nf, 
+        "fine_method"=>fine_method, "use_float64x4"=>use_float64x4,
+        "Delta_T_com"=>DeltaT, "fine_stepsize"=>deltat
+    )
+    save_config(output_dir, config)
 
-println("\nRunning sequential ...")
-t = collect(T_init:DeltaT:T_end)    
-p_all, q_all = Parareal.plain(p0, q0, t, fine_solve, fine_solve, niters=0)
-save_all_iterations(output_dir, p_all, q_all, dtype)
+    if problem == "fpu"
+        kwargs = Dict(:omega => fpu_omega)
+        param = (fpu_omega^2)/2.
+    end 
+
+    fine_solve = (p0, q0, t0, H) -> ode_solve(A!, METHODS[fine_method], p0, q0, t0, H, Nf, false, param)
+
+    p0, q0 = initial_condition(use_float64x4 ? Float64x4 : Float64; kwargs...)
+
+    println("\nInitial condition:")
+    println("p0: ", p0)
+    println("q0: ", q0)
+    println("H0: ", compute_H(p0, q0; kwargs...))
+    println("K0: ", compute_K(p0))
+    println("U0: ", compute_U(q0; kwargs...))
+
+    println("\nRunning sequential ...")
+    t = collect(T_init:DeltaT:T_end)    
+    p_all, q_all = Parareal.plain(p0, q0, t, fine_solve, fine_solve, niters=0)
+    save_all_iterations(output_dir, p_all, q_all, use_float64x4 ? Float64x4 : Float64)
+end
+
+main()

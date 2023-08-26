@@ -2,10 +2,12 @@
 Fermi-Pasta-Ulam Problem 
 """
 
+module FPU 
+
 using StaticArrays
 using MultiFloats
-using NL2sol
-# using NonlinearSolve
+# using NL2sol
+using NonlinearSolve
 
 const m = 3;
 
@@ -118,7 +120,7 @@ function compute_I(p::AbstractArray{T, 1}, q::AbstractArray{T, 1}; omega::Float6
 end
 
 
-function initial_condition(T; omega::Float64=300.)
+function initial_condition(T::Type; omega::Float64=300.)
     """Generate initial condition"""
     omega = convert(T, omega)
     sqrt2 = sqrt(convert(T, 2.0))
@@ -206,19 +208,23 @@ function recover_canonical_vars(z::AbstractArray{T, 1}, q_guess::AbstractArray{T
         return jac
     end
 
-    res = nl2sol(residual, jacobian, q_guess, 2*m+1; quiet=true)
-    q = res.minimum
+    # res = nl2sol(residual, jacobian, q_guess, 2*m+1; quiet=true)
+    # q = res.minimum
 
-    # f(u, p) = compute_dq(u; omega=omega) - dq
-    # jac(u, p) = Jac_dq(u; omega=omega)
-    # prob = NonlinearProblem(NonlinearFunction(f; jac=jac), q_guess, nothing)
-    # sol = solve(prob, NewtonRaphson())
-    # q = sol.u
-    # println("residual:", sol.resid)
+    f(u, p) = compute_dq(u; omega=omega) - dq
+    jac(u, p) = Jac_dq(u; omega=omega)
+    prob = NonlinearProblem(NonlinearFunction(f; jac=jac), q_guess, nothing)
+    sol = solve(prob, NewtonRaphson())
+    q = sol.u
+    println("residual:", sol.resid)
 
     if T <: MultiFloat
         q = convert.(T, q)
     end
 
     return p, q
+end
+
+export A!, A_static, compute_K, compute_U, compute_H, compute_I, initial_condition, construct_z, recover_canonical_vars 
+
 end

@@ -2,7 +2,7 @@ using DifferentialEquations
 using MultiFloats 
 
 
-methods = Dict(
+METHODS = Dict(
     "VelocityVerlet"=>VelocityVerlet(), 
     "CalvoSanz4"=>CalvoSanz4(),
     "McAte5"=>McAte5(),
