@@ -1,6 +1,6 @@
-using Distributed 
-addprocs(40);
-println("# workers = 40")
+"""
+HMC-H0 
+"""
 
 const problem = ARGS[1]
 const Nchains = parse(Int, ARGS[2])
@@ -8,10 +8,12 @@ const Njumps = parse(Int, ARGS[3])
 const Nsteps = parse(Int, ARGS[4])
 const sigma = parse(Float64, ARGS[5])
 const dt = parse(Float64, ARGS[6])
-const h = parse(Float64, ARGS[7])
-const with_rejection = parse(Bool, ARGS[8])
-const keep_itm_states = parse(Bool, ARGS[9])
-const output_dir = ARGS[10]
+const Nf = parse(Int, ARGS[7])
+const method = ARGS[8]
+const with_rejection = parse(Bool, ARGS[9])
+const keep_itm_states = parse(Bool, ARGS[10])
+const output_dir = ARGS[11]
+const use_float64x4 = parse(Bool, ARGS[12])
 
 println("problem =        ", problem)
 println("Nchains =        ", Nchains)
@@ -19,48 +21,57 @@ println("Njumps/chain =   ", Njumps)
 println("Nsteps/jump =    ", Nsteps)
 println("sigma =          ", sigma)
 println("dt =             ", dt)
-println("h =              ", h)
+println("Nf =             ", Nf)
+println("h =              ", dt/Nf)
+println("method =         ", method)
 println("with_rejection = ", with_rejection)
 println("keep_itm_states =", keep_itm_states)
 println("output_dir =     ", output_dir)
+println("use_float64x4 =  ", use_float64x4)
+
+
+using MultiFloats
+using Distributed 
+addprocs(40);
+println("# workers = 40")
+@everywhere include("../tools/setups/$($problem).jl")
+
+
+if problem == "fpu"
+    const OMEGA = 50.
+    const param = use_float64x4 ? (Float64x4(OMEGA)^2)/2. : (OMEGA^2)/2.
+    
+    kwargs = Dict(:omega => use_float64x4 ? Float64x4(OMEGA) : OMEGA)
+    println("\n", kwargs)
+end 
+
+p0, q0 = initial_condition(; kwargs...)
+H0 = compute_H(p0, q0; kwargs...)
+K0 = compute_K(p0)
+U0 = compute_U(q0; kwargs...)
+
+println("\nInitial condition:")
+println("p0 = ", p0)
+println("q0 = ", q0)
+println("H0 = ", H0)
+println("K0 = ", K0)
+println("U0 = ", U0)
 
 
 @everywhere begin 
-    using DifferentialEquations
+    include("../tools/ode_solver.jl")
+    include("./generate_data_utils.jl")
     using Random 
     using Distributions
+    using ProgressMeter 
 
-    include("./setups/$($problem).jl")
-    include("./generate_data_utils.jl")
-
-    function ode_solve(A, method, p0, q0, t0, H, nsteps, retfull)
-        
-        h = H/nsteps 
-        prob = SecondOrderODEProblem((du,u,p,t)->A(u), p0, q0, (t0, t0+H));
-        sol = solve(prob, method, tstops=t0:h:(t0+H), adaptive=false);
-        if retfull 
-            P = hcat([u.x[1] for u in sol.u]...)   
-            Q = hcat([u.x[2] for u in sol.u]...)
-            return P, Q
-        else 
-            p = sol[end].x[1]
-            q = sol[end].x[2]
-            return p, q
-        end
-    end
+    phi_dt(p, q) = ode_solve(A!, methods[$method], p, q, 0.0, $dt, $Nf, false, $param)
     
-    const dt = $dt;
-    const h = $h;
-    const sigma = $sigma;
-    
-    phi_dt(p, q) = ode_solve(A, CalvoSanz4(), p, q, 0.0, dt, round(Int, dt/h), false)
-
-
     function sample_p_new(p::AbstractArray{T, 1}, q::AbstractArray{T, 1}) where T<:AbstractFloat
-        U = compute_U(q)
-        K_new = normal(H0-U, abs(sigma*H0))
+        U = compute_U(q; $kwargs...)
+        K_new = normal($H0-U, abs($sigma*$H0))
         while K_new <= 0
-            K_new = normal(H0-U, abs(sigma*H0))
+            K_new = normal($H0-U, abs($sigma*$H0))
         end
         
         if $problem == "lennardjones"
@@ -108,7 +119,8 @@ println("output_dir =     ", output_dir)
             end
             p_new, q_new = phi_dt(p, q)
             
-            dH = compute_H(p_new, q_new) - compute_H(p, q)
+            dH = compute_H(p_new, q_new; $kwargs...) - compute_H(p, q; $kwargs...)
+            dH = Float64(dH)
             dist = Binomial(1, min(1, exp(-dH)))
             gamma = rand(dist)
             if gamma == 0
@@ -140,45 +152,20 @@ println("output_dir =     ", output_dir)
         end
         return samples 
     end
-    
-    
-    function chain_ensemble(p0::AbstractArray{T, 1}, q0::AbstractArray{T, 1}, transition_func::Function;
-            num_chains::Int=1, num_transitions::Int=1) where T<:AbstractFloat
-
-        seeds = 1:num_chains
-        res = pmap(s->chain(p0, q0, transition_func, num_transitions, s), seeds)
-
-        return vcat(res...)
-    end
-    
-    
-#     function chain(p0::AbstractArray{T, 1}, q0::AbstractArray{T, 1}, n_steps::Int, n_jumps::Int, seed::Int) where T<:AbstractFloat
-#         Random.seed!(seed)
-        
-#         n_samples = (n_steps+1) * n_jumps 
-#         P = zeros(length(p0), n_samples)
-#         Q = zeros(length(q0), n_samples)
-        
-#         for i in 1:n_jumps
-#             c = (n_steps+1) * i - n_steps 
-#             P[:, c] = sample_p_new(p0, q0)
-#             Q[:, c] = q0
-#             for j in 1:n_steps
-#                 P[:, c+j], Q[:, c+j] = phi_dt(P[:, c+j-1], Q[:, c+j-1])
-#             end
-#             p0, q0 = P[:, c+n_steps], Q[:, c+n_steps]
-#         end
-        
-#         return P, Q
-#     end
 end
 
-println("\nSampling initial states ...")
 
-if problem == "lennardjones"
-    p0 = v0
-    q0 = x0
-end 
+function chain_ensemble(p0::AbstractArray{T, 1}, q0::AbstractArray{T, 1}, transition_func::Function;
+        num_chains::Int=1, num_transitions::Int=1) where T<:AbstractFloat
+
+    seeds = 1:num_chains
+    res = @showprogress pmap(s->chain(p0, q0, transition_func, num_transitions, s), seeds)
+
+    return vcat(res...)
+end
+    
+
+println("\nSampling chains ...")
 
 if with_rejection 
     res = chain_ensemble(p0, q0, (p, q)->rhmc_H0_transition(p, q; nsteps=Nsteps, keep_intermediate_states=keep_itm_states), 
@@ -188,11 +175,9 @@ else
         num_chains=Nchains, num_transitions=Njumps)
 end
     
-# chain_seeds = 1:Nchains;
-# res = pmap(s->chain(p0, q0, Nsteps, Njumps, s), chain_seeds);
-P_init = hcat([p for (p, q) in res]...)
-Q_init = hcat([q for (p, q) in res]...)
+P = hcat([p for (p, q) in res]...)
+Q = hcat([q for (p, q) in res]...)
 
 println("Done.")
 
-save("$output_dir/U0.csv", P_init, Q_init)
+save_csv("$output_dir/U0.csv", P, Q, use_float64x4 ? Float64x4 : Float64)

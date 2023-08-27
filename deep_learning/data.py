@@ -43,12 +43,12 @@ class DataModule(pl.LightningDataModule):
         print("U_n (n=0,1,...,{0}) test: {1}".format(len(self.ds_test[:])-1, self.ds_test[:][0].shape))
 
     def train_dataloader(self):
-        if self.trainer.current_epoch < 400:
-            batch_size = 100
-        elif self.trainer.current_epoch < 1000:
+        if self.trainer.current_epoch < 800:
             batch_size = 200
-        elif self.trainer.current_epoch < 2200:
+        elif self.trainer.current_epoch < 2000:
             batch_size = 400
+        elif self.trainer.current_epoch < 4400:
+            batch_size = 800
         else:
             batch_size = self.batch_size
         return DataLoader(self.ds_train, batch_size=batch_size, shuffle=True, num_workers=self.num_workers, pin_memory=False)

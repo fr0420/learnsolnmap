@@ -1,11 +1,15 @@
-PROBLEM=fpu
-DELTAT=1e-1
-H=5e-6
-METHOD=CalvoSanz4
-DATADIR=../data/fpu/mc/Dt1e0_dt1e-1_h5e-6_omega300_v2/sigma0.1/Nchains100_Njumps400_Nsteps4/Dt1e-1
+#!/bin/bash 
 
-julia generate_targets.jl $PROBLEM $DELTAT $H $METHOD $DATADIR/U0.csv $DATADIR/U1.csv &&
-julia generate_targets.jl $PROBLEM $DELTAT $H $METHOD $DATADIR/U1.csv $DATADIR/U2.csv &&
-julia generate_targets.jl $PROBLEM $DELTAT $H $METHOD $DATADIR/U2.csv $DATADIR/U3.csv &&
-julia generate_targets.jl $PROBLEM $DELTAT $H $METHOD $DATADIR/U3.csv $DATADIR/U4.csv &&
-julia generate_targets.jl $PROBLEM $DELTAT $H $METHOD $DATADIR/U4.csv $DATADIR/U5.csv
+PROBLEM=fpu
+DELTAT=1e-0
+NFINE=65536  # 2^16
+#NFINE=64  # 2^6
+METHOD=McAte5
+DATADIR=../data/fpu/omega50/rhmc-H0/ma5_dt2.5e-1_h1.5259e-5_Nchains100_Njumps2000_sigma1e-1/ma5_Dt1e0_h1.5259e-5/
+USE_FLOAT64X4=true
+
+julia generate_targets.jl $PROBLEM $DELTAT $NFINE $METHOD $DATADIR/U0.csv $DATADIR/U1.csv $USE_FLOAT64X4 &&
+julia generate_targets.jl $PROBLEM $DELTAT $NFINE $METHOD $DATADIR/U1.csv $DATADIR/U2.csv $USE_FLOAT64X4 &&
+julia generate_targets.jl $PROBLEM $DELTAT $NFINE $METHOD $DATADIR/U2.csv $DATADIR/U3.csv $USE_FLOAT64X4 &&
+julia generate_targets.jl $PROBLEM $DELTAT $NFINE $METHOD $DATADIR/U3.csv $DATADIR/U4.csv $USE_FLOAT64X4 &&
+julia generate_targets.jl $PROBLEM $DELTAT $NFINE $METHOD $DATADIR/U4.csv $DATADIR/U5.csv $USE_FLOAT64X4

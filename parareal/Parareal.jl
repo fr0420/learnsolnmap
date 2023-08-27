@@ -2,14 +2,15 @@ module Parareal
 
 using Distributed
 using Optim
-using LinearAlgebra 
+using GenericLinearAlgebra 
+using ProgressMeter 
 
 
 "Plain parareal algorithm"
 function plain(
         p0::AbstractArray{T, 1},
         q0::AbstractArray{T, 1},
-        t_grid::AbstractArray{T, 1},
+        t_grid::AbstractArray{Float64, 1},
         fine_solve::Function,
         coarse_solve::Function;
         niters::Integer=3) where T<:AbstractFloat
@@ -33,7 +34,7 @@ function plain(
     # solve for solutions at iteration 0 
     p[:, 1] = p0
     q[:, 1] = q0
-    for n in 1:N
+    @showprogress for n in 1:N
         p[:, n+1], q[:, n+1] = coarse_solve(p[:, n], q[:, n], t_grid[n], dt[n])
     end
     p_all[:, :, 1] = p
@@ -47,12 +48,12 @@ function plain(
         pnew[:, 1] = p0
         qnew[:, 1] = q0
          
-        F = pmap(fine_solve, eachslice(p[:, 1:end-1], dims=2), eachslice(q[:, 1:end-1], dims=2), t_grid[1:end-1], dt)
+        F = @showprogress pmap(fine_solve, eachslice(p[:, 1:end-1], dims=2), eachslice(q[:, 1:end-1], dims=2), t_grid[1:end-1], dt)
 #         G = pmap(coarse_solve, eachslice(p[:, 1:end-1], dims=2), eachslice(q[:, 1:end-1], dims=2), t_grid[1:end-1], dt)
         G = [coarse_solve(p[:, n], q[:, n], t_grid[n], dt[n]) for n in 1:N]
         
-        for n in 1:N
-            pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .+ F[n] .- G[n]
+        @showprogress for n in 1:N
+            pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .- G[n] .+ F[n]
         end
 
         p = pnew
@@ -70,7 +71,7 @@ end
 function sympcorr(
         p0::AbstractArray{T, 1},
         q0::AbstractArray{T, 1},
-        t_grid::AbstractArray{T, 1},
+        t_grid::AbstractArray{Float64, 1},
         fine_solve::Function,
         coarse_solve::Function,
         phi::Function;
@@ -97,7 +98,7 @@ function sympcorr(
     # solve for solutions at iteration 0 
     p[:, 1] = p0
     q[:, 1] = q0
-    for n in 1:N
+    @showprogress for n in 1:N
         p[:, n+1], q[:, n+1] = coarse_solve(p[:, n], q[:, n], t_grid[n], dt[n])
     end
     p_all[:, :, 1] = p
@@ -111,7 +112,7 @@ function sympcorr(
         pnew[:, 1] = p0
         qnew[:, 1] = q0
         
-        F = pmap(fine_solve, eachslice(p[:, 1:end-1], dims=2), eachslice(q[:, 1:end-1], dims=2), t_grid[1:end-1], dt)
+        F = @showprogress pmap(fine_solve, eachslice(p[:, 1:end-1], dims=2), eachslice(q[:, 1:end-1], dims=2), t_grid[1:end-1], dt)
 #         G = pmap(coarse_solve, eachslice(p[:, 1:end-1], dims=2), eachslice(q[:, 1:end-1], dims=2), t_grid[1:end-1], dt)
         G = [coarse_solve(p[:, n], q[:, n], t_grid[n], dt[n]) for n in 1:N]
         
@@ -121,11 +122,11 @@ function sympcorr(
         println(h)
         
         if with_additive
-            for n in 1:N
-                pnew[:, n+1], qnew[:, n+1] = phi(coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n])..., h) .+ F[n] .- phi(G[n]..., h)
+            @showprogress for n in 1:N
+                pnew[:, n+1], qnew[:, n+1] = phi(coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n])..., h) .- phi(G[n]..., h) .+ F[n] 
             end
         else
-            for n in 1:N
+            @showprogress for n in 1:N
                 pnew[:, n+1], qnew[:, n+1] = phi(coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n])..., h)
             end
         end
@@ -145,7 +146,7 @@ end
 function phasecorr(
         p0::AbstractArray{T, 1},
         q0::AbstractArray{T, 1},
-        t_grid::AbstractArray{T, 1},
+        t_grid::AbstractArray{Float64, 1},
         fine_solve::Function,
         coarse_solve::Function,
         Lambda::Function,
@@ -172,7 +173,7 @@ function phasecorr(
     # solve for solutions at iteration 0 
     p[:, 1] = p0
     q[:, 1] = q0
-    for n in 1:N
+    @showprogress for n in 1:N
         p[:, n+1], q[:, n+1] = coarse_solve(p[:, n], q[:, n], t_grid[n], dt[n])
     end
     p_all[:, :, 1] = p
@@ -186,7 +187,7 @@ function phasecorr(
         pnew[:, 1] = p0
         qnew[:, 1] = q0
         
-        F = pmap(fine_solve, eachslice(p[:, 1:end-1], dims=2), eachslice(q[:, 1:end-1], dims=2), t_grid[1:end-1], dt)
+        F = @showprogress pmap(fine_solve, eachslice(p[:, 1:end-1], dims=2), eachslice(q[:, 1:end-1], dims=2), t_grid[1:end-1], dt)
 #         G = pmap(coarse_solve, eachslice(p[:, 1:end-1], dims=2), eachslice(q[:, 1:end-1], dims=2), t_grid[1:end-1], dt)
         G = [coarse_solve(p[:, n], q[:, n], t_grid[n], dt[n]) for n in 1:N]
         
@@ -195,15 +196,15 @@ function phasecorr(
         
         # solve procrustes problem 
         M = Fh * Gh'
-        sol = svd(M)
+        sol = GenericLinearAlgebra.svd(M)
         Omega = sol.U * sol.Vt
         
         if with_additive
-            for n in 1:N
-                pnew[:, n+1], qnew[:, n+1] = Theta(coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n])..., Omega) .+ F[n] .- Theta(G[n]..., Omega)
+            @showprogress for n in 1:N
+                pnew[:, n+1], qnew[:, n+1] = Theta(coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n])..., Omega) .- Theta(G[n]..., Omega) .+ F[n] 
             end
         else
-            for n in 1:N
+            @showprogress for n in 1:N
                 pnew[:, n+1], qnew[:, n+1] = Theta(coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n])..., Omega)
             end
         end
@@ -223,7 +224,7 @@ end
 function interpolative(
         p0::AbstractArray{T, 1},
         q0::AbstractArray{T, 1},
-        t_grid::AbstractArray{T, 1},
+        t_grid::AbstractArray{Float64, 1},
         fine_solve::Function,
         coarse_solve::Function;
         niters::Integer=3,
@@ -285,7 +286,7 @@ function interpolative(
     end
 
     for n in 1:N
-        pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .+ F[n] .- G[n]
+        pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .- G[n] .+ F[n] 
     end
 
     p = pnew
@@ -322,12 +323,12 @@ function interpolative(
             res = svd(W[:, :, n])
             m = sum(res.S/res.S[1] .> tol)
             if m == 1 
-                pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .+ F[n] .- G[n]
+                pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .- G[n] .+ F[n]
             else 
                 I = K[:, :, n] * res.V[:, 1:m] * Diagonal(1 ./ res.S[1:m]) * res.U[:, 1:m]'
                 corr = I * [pnew[:, n]; qnew[:, n]; 1.]
                 if norm(corr) > 2 * maximum(norm.(eachcol(K[:, :, n])))
-                    pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .+ F[n] .- G[n]
+                    pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n]) .- G[n] .+ F[n]
                 else
                     pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n], t_grid[n], dt[n])
                     pnew[:, n+1] += corr[1:d]
@@ -354,4 +355,3 @@ end
 export plain, sympcorr, phasecorr, interpolative
 
 end
-
