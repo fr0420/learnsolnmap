@@ -84,17 +84,18 @@ def main(checkpoint_paths, u0_list, u0_labels, nsteps, columns, output_dir):
 
 
 checkpoint_paths = [
-    "/work/08170/rfang/ls6/learnsolnmap/solutionmap/jre2c4by/checkpoints/epoch999-val_loss1.789e-05.ckpt",
-    "/work/08170/rfang/ls6/learnsolnmap/solutionmap/7mxum0yk/checkpoints/epoch999-val_loss1.218e-05.ckpt",
+    "/work/08170/rfang/ls6/learnsolnmap/solutionmap/17mwp9ds/checkpoints/epoch9998-val_loss7.183e-06.ckpt",
+    "/work/08170/rfang/ls6/learnsolnmap/solutionmap/668irhmp/checkpoints/epoch4999-val_loss5.592e-06.ckpt",
+    "/work/08170/rfang/ls6/learnsolnmap/solutionmap/mgrw0exy/checkpoints/epoch4999-val_loss6.319e-06.ckpt",
 ]
 
 
 cols = ["p1", "p2", "p3", "p4", "p5", "p6", "q1", "q2", "q3", "q4", "q5", "q6"]
-omega = 50
+omega = 300
 u0_list = [torch.tensor([0., np.sqrt(2), 0., 0., 0., 0., (1 - 1/omega)/np.sqrt(2), (1 + 1/omega)/np.sqrt(2), 0., 0., 0., 0.], dtype=torch.float64),
            torch.tensor([0., 1., 0., 0., 0., 0., (1 - 1/omega)/np.sqrt(2), (1 + 1/omega)/np.sqrt(2), 0., 0., 0., 0.], dtype=torch.float64),
            torch.tensor([0., 2., 0., 0., 0., 0., (1 - 1/omega)/np.sqrt(2), (1 + 1/omega)/np.sqrt(2), 0., 0., 0., 0.], dtype=torch.float64)]
-u0_labels = ["H0-2.0012", "H0-1.5012", "H0-3.0012"]
+u0_labels = ["H0-2.00003", "H0-1.50003", "H0-3.00003"]
 
 
 if __name__ == '__main__':
