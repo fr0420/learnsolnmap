@@ -2,7 +2,7 @@ using PyCall
 
 py"""
 import sys
-sys.path.insert(0, "/workspace/projects_rui/learnsolnmap")
+sys.path.insert(0, "/workspace/projects_rui/learnsolnmap/deep_learning")
 """
 torch = pyimport("torch")
 model = pyimport("model")
@@ -12,6 +12,7 @@ function load_nn(checkpoint_path)
     # nn_func = model.SolutionMap(checkpoint["hyper_parameters"]...).double()
     nn_func = model.SolutionMap.load_from_checkpoint(checkpoint_path, strict=false).double()
     nn_func.load_state_dict(checkpoint["state_dict"], strict=false)
+    nn_func.to("cpu")
     return nn_func
 end 
 
