@@ -51,12 +51,13 @@ venv.bak/
 ### Data and model files 
 
 data/
-solutionmap/
-lightning_logs/
-wandb/
-checkpoints/
-res/
+deep_learning/checkpoints/
+deep_learning/solutionmap/
+deep_learning/lightning_logs/
+deep_learning/wandb/
+deep_learning/res/
 generate_data/stability/
+parareal/temp
 
 ### Job logs 
 
