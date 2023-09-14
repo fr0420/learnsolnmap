@@ -56,8 +56,8 @@ deep_learning/solutionmap/
 deep_learning/lightning_logs/
 deep_learning/wandb/
 deep_learning/res/
-generate_data/stability/
 parareal/temp
+notebooks/stability/
 
 ### Job logs 
 
