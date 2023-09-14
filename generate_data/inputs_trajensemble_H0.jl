@@ -43,10 +43,7 @@ println("output_dir = ", output_dir)
         end
     end
     
-    const dt = $dt;
-    const h = $h;
-    
-    phi_dt(p, q) = ode_solve(A, CalvoSanz4(), p, q, 0.0, dt, round(Int, dt/h), false)
+    phi_dt(p, q) = ode_solve(A, CalvoSanz4(), p, q, 0.0, $dt, round(Int, $dt/$h), false)
     
     function phi_dt_K(
             p0::AbstractArray{T, 1}, 

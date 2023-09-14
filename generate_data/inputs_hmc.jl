@@ -49,11 +49,7 @@ println("output_dir =     ", output_dir)
         end
     end
     
-    const dt = $dt;
-    const h = $h;
-    const beta = $beta;
-    
-    phi_dt(p, q) = ode_solve(A, CalvoSanz4(), p, q, 0.0, dt, round(Int, dt/h), false)
+    phi_dt(p, q) = ode_solve(A, CalvoSanz4(), p, q, 0.0, dt, round(Int, $dt/$h), false)
 
     
     function hmc_transition(p::AbstractArray{T, 1}, q::AbstractArray{T, 1}; 
@@ -63,9 +59,9 @@ println("output_dir =     ", output_dir)
         
         # step 1: momentum refreshment
         if $problem == "lennardjones"
-            p = randn(length(p)) * sqrt(1/MASS) * 1/sqrt(beta)  # check this 
+            p = randn(length(p)) * sqrt(1/MASS) * 1/sqrt($beta)  # check this 
         else
-            p = randn(length(p)) * 1/sqrt(beta)
+            p = randn(length(p)) * 1/sqrt($beta)
         end
         
         # step 2: integration in time 
@@ -90,7 +86,7 @@ println("output_dir =     ", output_dir)
         if $problem == "lennardjones"
             p = randn(length(p)) * sqrt(1/MASS) * 1/sqrt(beta)  # check this 
         else
-            p = randn(length(p)) * 1/sqrt(beta)
+            p = randn(length(p)) * 1/sqrt($beta)
         end  
         
         # step 2: integration in time with accept/reject mechanism

@@ -34,6 +34,7 @@ using MultiFloats
 using Distributed 
 addprocs(40);
 println("# workers = 40")
+include("../tools/utils.jl")
 @everywhere include("../tools/setups/$($problem).jl")
 
 
@@ -60,7 +61,7 @@ println("U0 = ", U0)
 
 @everywhere begin 
     include("../tools/ode_solver.jl")
-    include("./generate_data_utils.jl")
+    include("../tools/sampling.jl")
     using Random 
     using Distributions
     using ProgressMeter 
