@@ -152,7 +152,8 @@ function phasecorr(
         Lambda::Function,
         Theta::Function;
         niters::Integer=3,
-        with_additive::Bool=true) where T<:AbstractFloat
+        with_additive::Bool=true,
+        normalize_data::Bool=false) where T<:AbstractFloat
     
     # get dimension d
     @assert length(p0) == length(q0)
@@ -193,6 +194,11 @@ function phasecorr(
         
         Fh = hcat([Lambda(p, q) for (p, q) in F]...)
         Gh = hcat([Lambda(p, q) for (p, q) in G]...)
+        
+        if normalize_data 
+            normalize!.(eachcol(Fh))
+            normalize!.(eachcol(Gh))
+        end
         
         # solve procrustes problem 
         M = Fh * Gh'
