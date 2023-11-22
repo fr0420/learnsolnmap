@@ -392,7 +392,8 @@ class GenericModel(pl.LightningModule):
 
 
 class SolutionMapBase(GenericModel):
-    def __init__(self, H_strength=0., WS_strength=0., S_strength=0., V_strength=0., sequence_len=1, **kwargs):
+    def __init__(self, H_strength=0., WS_strength=0., S_strength=0., V_strength=0., 
+                 Comm_strength=0., Lagr_strength=0., sequence_len=1, **kwargs):
         super(SolutionMapBase, self).__init__(**kwargs)
             
         self.sequence_len = sequence_len
@@ -402,7 +403,9 @@ class SolutionMapBase(GenericModel):
         self.H_strength = H_strength 
         self.WS_strength = WS_strength 
         self.S_strength = S_strength 
-        self.V_strength = V_strength 
+        self.V_strength = V_strength
+        self.Comm_strength = Comm_strength
+        self.Lagr_strength = Lagr_strength
 
     def set_sequence_weights(self, weights):
         self.weights = weights 
@@ -456,7 +459,10 @@ class SolutionMapBase(GenericModel):
 #         d = torch.stack([torch.det(torch.autograd.functional.jacobian(self, u0, create_graph=True)) for u0 in batch[0]])
 #         loss_d = torch.mean((d-1)**2)
 #         loss += loss_d
-        
+
+        loss_Comm = self.loss_fn(self.fine_solve_dt(self.forward(u0)), self.forward(self.fine_solve_dt(u0)))
+        loss += self.Comm_strength * loss_Comm
+
         self.log('step_loss', loss, on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
         metrics = {'loss': loss.detach()}
         for t in range(self.sequence_len):
@@ -467,6 +473,7 @@ class SolutionMapBase(GenericModel):
 #         metrics['loss_H'] = loss_H.detach()
         metrics['loss_S'] = loss_S.detach()
         metrics['loss_V'] = loss_V.detach()
+        metrics['loss_Comm'] = loss_Comm.detach()
         
         self.training_step_outputs.append({'batch_size': len(batch[0]), 'metrics': metrics})
         
@@ -504,6 +511,9 @@ class SolutionMapBase(GenericModel):
         loss_S = S_losses.sum()
         loss += self.S_strength * self.Delta_t * loss_S
         
+        loss_Comm = self.loss_fn(self.fine_solve_dt(self.forward(u0)), self.forward(self.fine_solve_dt(u0)))
+        loss += self.Comm_strength * loss_Comm
+        
         metrics = {'loss': loss.detach()}
         for t in range(self.sequence_len):
             metrics[f'loss_step{t+1}'] = losses[t].detach()
@@ -511,6 +521,7 @@ class SolutionMapBase(GenericModel):
             metrics[f'H_err_step{t+1}'] = H_errors[t].detach()
 #         metrics['loss_H'] = loss_H.detach()
         metrics['loss_S'] = loss_S.detach()
+        metrics['loss_Comm'] = loss_Comm.detach()
 
         if stage == 'val': 
             self.validation_step_outputs.append({'batch_size': len(batch[0]), 'metrics': metrics})
@@ -535,11 +546,13 @@ class SolutionMap(SolutionMapBase):
             self.compute_H = lambda u: fpu.compute_H(u[:, :6], u[:, 6:])
             self.compute_Lagrangian = lambda u: fpu.compute_Lagrangian(u[:, :6], u[:, 6:])
             self.input_size = 12
+            self.fine_solver_dt = VelocityVerlet(lambda q: fpu.compute_q_ddot(q), Delta_t/256, 4)
         elif problem == 'lennardjones':
             lj = LennardJones(**problem_kwargs)
             self.compute_H = lambda u: lj.compute_H(u[:, :14], u[:, 14:])
             self.compute_Lagrangian = lambda u: lj.compute_Lagrangian(u[:, :14], u[:, 14:])
             self.input_size = 28
+            self.fine_solver_dt = VelocityVerlet(lambda x: lj.compute_x_ddot(x), Delta_t/256, 4)
         else:
             self.compute_H = None 
             self.input_size = None
@@ -598,6 +611,10 @@ class SolutionMap(SolutionMapBase):
 
         return res, res_hs
 
+    def fine_solve_dt(self, u):
+        d = self.input_size // 2
+        return torch.cat(self.fine_solver_dt.solve(u[:, :d], u[:, d:]), dim=1)
+        
 
 class CorrectionOperator(SolutionMapBase):
     def __init__(self, Delta_t, coarse_h, model_name, layer_sizes, problem, problem_kwargs=None, activation_fn='ELU', activation_kwargs=None, use_bn=False, use_scale=True, **kwargs):
@@ -634,7 +651,6 @@ class CorrectionOperator(SolutionMapBase):
     def coarse_solve(self, u):
         d = self.input_size // 2
         return torch.cat(self.coarse_solver.solve(u[:, :d], u[:, d:]), dim=1)
-
         
     def forward(self, u):
         return self.model(self.coarse_solve(u))
