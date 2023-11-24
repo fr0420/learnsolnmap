@@ -411,7 +411,7 @@ class SolutionMapBase(GenericModel):
         self.weights = weights 
         self.sequence_len = len(weights)
     
-    def get_sequence_predictions(self, u0, sequence_len):
+    def forward(self, u0, sequence_len):
         pass 
         
     def training_step(self, batch, batch_idx):
@@ -425,7 +425,7 @@ class SolutionMapBase(GenericModel):
 
         u0 = batch[0]
         H0 = self.compute_H(u0)
-        res, res_hs = self.get_sequence_predictions(u0, self.sequence_len)
+        res, res_hs = self(u0, self.sequence_len)
         
         for t in range(self.sequence_len):
             ut_pred = res[t]
@@ -460,7 +460,9 @@ class SolutionMapBase(GenericModel):
 #         loss_d = torch.mean((d-1)**2)
 #         loss += loss_d
 
-        loss_Comm = self.loss_fn(self.fine_solve_dt(self.forward(u0)), self.forward(self.fine_solve_dt(u0)))
+        phi_F_u0 = self(self.fine_solve_dt(u0), 1)[0][0]
+        F_phi_u0 = self.fine_solve_dt(self(u0, 1)[0][0])
+        loss_Comm = self.loss_fn(F_phi_u0, phi_F_u0)
         loss += self.Comm_strength * loss_Comm
 
         self.log('step_loss', loss, on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
@@ -490,7 +492,7 @@ class SolutionMapBase(GenericModel):
 
         u0 = batch[0]
         H0 = self.compute_H(u0)
-        res, _ = self.get_sequence_predictions(u0, self.sequence_len)
+        res, _ = self(u0, self.sequence_len)
         
         for t in range(self.sequence_len):
             ut_pred = res[t]
@@ -511,7 +513,9 @@ class SolutionMapBase(GenericModel):
         loss_S = S_losses.sum()
         loss += self.S_strength * self.Delta_t * loss_S
         
-        loss_Comm = self.loss_fn(self.fine_solve_dt(self.forward(u0)), self.forward(self.fine_solve_dt(u0)))
+        phi_F_u0 = self(self.fine_solve_dt(u0), 1)[0][0]
+        F_phi_u0 = self.fine_solve_dt(self(u0, 1)[0][0])
+        loss_Comm = self.loss_fn(F_phi_u0, phi_F_u0)
         loss += self.Comm_strength * loss_Comm
         
         metrics = {'loss': loss.detach()}
@@ -590,14 +594,14 @@ class SolutionMap(SolutionMapBase):
         
         self.friction = FrictionBlock(d=self.input_size//2, init_gamma=init_gamma)
     
-    def forward(self, u):
+    def forward_1step(self, u):
         u = self.i2h(u)
         u = self.h2h(u)
         u = self.h2o(u)
         u = u + self.friction(u)
         return u
     
-    def get_sequence_predictions(self, u0, sequence_len):
+    def forward(self, u0, sequence_len):
         res = []
         res_hs = []
 
@@ -652,14 +656,14 @@ class CorrectionOperator(SolutionMapBase):
         d = self.input_size // 2
         return torch.cat(self.coarse_solver.solve(u[:, :d], u[:, d:]), dim=1)
         
-    def forward(self, u):
+    def forward_1step(self, u):
         return self.model(self.coarse_solve(u))
     
-    def get_sequence_predictions(self, u0, sequence_len):
+    def forward(self, u0, sequence_len):
         res = []
         u = u0 
         for _ in range(sequence_len):
-            u = self.forward(u)
+            u = self.forward_1step(u)
             res.append(u)
         return res
     
@@ -700,14 +704,14 @@ class CorrectionOperator2(SolutionMapBase):
         d = self.input_size // 2
         return torch.cat(self.coarse_solver.solve(u[:, :d], u[:, d:]), dim=1)
         
-    def forward(self, u):
+    def forward_1step(self, u):
         u_c = self.coarse_solve(u)
         return u_c + self.model(u_c)
     
-    def get_sequence_predictions(self, u0, sequence_len):
+    def forward(self, u0, sequence_len):
         res = []
         u = u0 
         for _ in range(sequence_len):
-            u = self.forward(u)
+            u = self.forward_1step(u)
             res.append(u)
         return res
