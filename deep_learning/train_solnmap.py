@@ -7,6 +7,7 @@ import torch
 from torch import nn
 from data import DataModule 
 from model import SolutionMap
+from initialization import *
 import pytorch_lightning as pl
 from pytorch_lightning import seed_everything
 from pytorch_lightning.loggers import WandbLogger
@@ -68,6 +69,7 @@ if __name__ == '__main__':
     ap.add_argument('--S_strength', default=0., type=float, help='lagrangian regularization strength')
     ap.add_argument('--V_strength', default=0., type=float, help='transport cost regularization strength')
     ap.add_argument('--Comm_strength', default=0., type=float, help='commute with F_dt regularization strength')
+    ap.add_argument('--weight_init', default='', help='weight initialization')
     ap.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     ap.add_argument('--lr_decay', default=1e-3, type=float, help='dacay rate of lambda lr scheduler')
     ap.add_argument('--num_epochs', default=1000, type=int, help='number of epochs')
@@ -116,6 +118,7 @@ if __name__ == '__main__':
     #     lr_scheduler_fn = 'CustomCyclicLR', 
     #     lr_scheduler_kwargs = {'steps_per_cycle': args.steps_per_cycle, 'mult_factor': 1.0, 'base_lr': 0.0001, 'max_lr': args.lr, 'scale_mode': 'iterations', 'pct_start': 0.3, 'base_lr_scale_fn': lambda i: 0.999997**i, 'max_lr_scale_fn': lambda i: 0.999997**i, 'anneal_strategy': 'cos'}, 
         lr_scheduler_interval = 'step',
+        weight_initialization = args.weight_init,
         H_strength = 0.,
         WS_strength = args.WS_strength,
         S_strength = args.S_strength, 
@@ -185,6 +188,15 @@ if __name__ == '__main__':
         Delta_t=CONFIG['Delta_t'],
     ).double()
 
+    if CONFIG['weight_initialization'] == 'xavier_uniform':
+        xavier_uniform_init(lit_model)
+    elif CONFIG['weight_initialization'] == 'xavier_normal':
+        xavier_normal_init(lit_model)
+    elif CONFIG['weight_initialization'] == 'kaiming_uniform':
+        kaiming_uniform_init(lit_model)
+    elif CONFIG['weight_initialization'] == 'kaiming_normal':
+        kaiming_normal_init(lit_model)
+    
     if args.init_model_ckpt is not None:
         checkpoint = torch.load(args.init_model_ckpt)
         lit_model.load_state_dict(checkpoint["state_dict"], strict=False)
