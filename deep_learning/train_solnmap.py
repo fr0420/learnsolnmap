@@ -67,6 +67,7 @@ if __name__ == '__main__':
     ap.add_argument('--WS_strength', default=0., type=float, help='weight smoothness regularization strength')
     ap.add_argument('--S_strength', default=0., type=float, help='lagrangian regularization strength')
     ap.add_argument('--V_strength', default=0., type=float, help='transport cost regularization strength')
+    ap.add_argument('--Comm_strength', default=0., type=float, help='commute with F_dt regularization strength')
     ap.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     ap.add_argument('--lr_decay', default=1e-3, type=float, help='dacay rate of lambda lr scheduler')
     ap.add_argument('--num_epochs', default=1000, type=int, help='number of epochs')
@@ -102,11 +103,11 @@ if __name__ == '__main__':
     #     optimizer_kwargs = {},
         optimizer_kwargs = {'lr': args.lr, 'weight_decay': 1e-2}, 
     #     optimizer_kwargs = {'lr': args.lr, 'nesterov': False, 'momentum': 0.}, 
-    #     lr_scheduler_fn = None, lr_scheduler_kwargs = {},
-        lr_scheduler_fn = 'OneCycleLR',
+        lr_scheduler_fn = None,
+    #     lr_scheduler_fn = 'OneCycleLR',
         lr_scheduler_kwargs = {'max_lr': args.lr, 
-            'total_steps': 1600000,
-    #         'epochs': args.num_epochs, 'steps_per_epoch': int(math.ceil(160000/args.batch_size)), 
+    #         'total_steps': 1600000,
+            'epochs': args.num_epochs, 'steps_per_epoch': int(math.ceil(160000/args.batch_size)), 
             'anneal_strategy': 'cos', 'cycle_momentum': False, 'three_phase': False, 'pct_start': 0.3},
     #     lr_scheduler_fn = 'ReduceLROnPlateau',
     #     lr_scheduler_kwargs = {'factor': 0.85, 'patience': 5, 'cooldown': 5},
@@ -118,7 +119,8 @@ if __name__ == '__main__':
         H_strength = 0.,
         WS_strength = args.WS_strength,
         S_strength = args.S_strength, 
-        V_strength = args.V_strength, 
+        V_strength = args.V_strength,
+        Comm_strength = args.Comm_strength,
         sequence_weights = args.sequence_weights,
         sequence_len = len(args.sequence_weights),
         n1 = 3,
@@ -177,6 +179,7 @@ if __name__ == '__main__':
         WS_strength=CONFIG['WS_strength'],
         S_strength=CONFIG['S_strength'],
         V_strength=CONFIG['V_strength'],
+        Comm_strength=CONFIG['Comm_strength'],
         problem=CONFIG['group'],
         problem_kwargs=CONFIG['problem_kwargs'],
         Delta_t=CONFIG['Delta_t'],
@@ -213,7 +216,7 @@ if __name__ == '__main__':
     )
 
     # Log gradients and model topology
-    wandb_logger.watch(lit_model, log='all', log_freq=500)
+    wandb_logger.watch(lit_model, log="all", log_freq=500)
 
     # Fit data 
     if args.resume_from_ckpt is not None:
@@ -224,4 +227,4 @@ if __name__ == '__main__':
     print("Best model saved to:\n", checkpoint_callback.best_model_path)
 
     # Close W&B logger
-    wandb_logger.finalize('success')
+    wandb_logger.finalize("success")
