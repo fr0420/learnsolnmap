@@ -380,17 +380,7 @@ class GenericModel(pl.LightningModule):
             self.log_dict(logs, sync_dist=True, rank_zero_only=True)
 
     def configure_optimizers(self):
-        params = list(self.named_parameters())
-
-        def is_last_layer(n): return 'layers.4' in n
-
-        grouped_parameters = [
-            {"params": [p for n, p in params if is_last_layer(n)], 'lr': self.optimizer_kwargs['lr']*self.lr_mult},
-            {"params": [p for n, p in params if not is_last_layer(n)]},
-        ]
-
-        optimizer = self.optimizer_fn(grouped_parameters, **self.optimizer_kwargs)
-        #optimizer = self.optimizer_fn(self.parameters(), **self.optimizer_kwargs)
+        optimizer = self.optimizer_fn(self.parameters(), **self.optimizer_kwargs)
         if self.lr_scheduler_fn is not None:
             lr_scheduler = {
                 'scheduler': self.lr_scheduler_fn(optimizer, **self.lr_scheduler_kwargs),
@@ -400,6 +390,30 @@ class GenericModel(pl.LightningModule):
             return {'optimizer': optimizer, 'lr_scheduler': lr_scheduler}
         else:
             return optimizer
+        
+    # def configure_optimizers(self):
+    #     params = list(self.named_parameters())
+
+    #     def is_last_layer(n): return 'layers.4' in n
+
+    #     # grouped_parameters = [
+    #     #     {"params": [p for n, p in params if is_last_layer(n)], 'lr': self.optimizer_kwargs['lr']*self.lr_mult},
+    #     #     {"params": [p for n, p in params if not is_last_layer(n)]},
+    #     # ]
+    #     # optimizer = self.optimizer_fn(grouped_parameters, **self.optimizer_kwargs)
+        
+    #     optimizer1 = self.optimizer_fn([p for n, p in params if is_last_layer(n)], **self.optimizer_kwargs)
+    #     optimizer2 = self.optimizer_fn([p for n, p in params if not is_last_layer(n)], **self.optimizer_kwargs)
+
+    #     if self.lr_scheduler_fn is not None:
+    #         lr_scheduler = {
+    #             'scheduler': self.lr_scheduler_fn(optimizer1, **self.lr_scheduler_kwargs),
+    #             'interval': self.lr_scheduler_interval,
+    #             'monitor': 'train/loss'
+    #         }
+    #         return {'optimizer': optimizer1, 'lr_scheduler': lr_scheduler}, {'optimizer': optimizer2}
+    #     else:
+    #         return [optimizer1, optimizer2]
 
 
 class SolutionMapBase(GenericModel):
@@ -476,6 +490,14 @@ class SolutionMapBase(GenericModel):
         loss_Comm = self.loss_fn(F_phi_u0, phi_F_u0)
         # loss += self.Comm_strength * loss_Comm
 
+        loss_Lagr = 0.
+        u = u0 
+        for _ in range(4):
+            phi_u = self(u, 1)[0][0]
+            loss_Lagr += self.compute_Lagrangian(phi_u).mean() * self.fine_solve_dt.T
+            u = self.fine_solve_dt(u)
+        loss += self.Lagr_strength * loss_Lagr
+
         self.log('step_loss', loss, on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
         metrics = {'loss': loss.detach()}
         for t in range(self.sequence_len):
@@ -487,11 +509,11 @@ class SolutionMapBase(GenericModel):
         metrics['loss_S'] = loss_S.detach()
         metrics['loss_V'] = loss_V.detach()
         metrics['loss_Comm'] = loss_Comm.detach()
+        metrics['loss_Lagr'] = loss_Lagr.detach()
         
         self.training_step_outputs.append({'batch_size': len(batch[0]), 'metrics': metrics})
         
         return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
-        #return loss 
 
     def _shared_eval_step(self, batch, batch_idx, stage=None):
         losses = torch.zeros(self.sequence_len).to(batch[0])
@@ -529,6 +551,14 @@ class SolutionMapBase(GenericModel):
         loss_Comm = self.loss_fn(F_phi_u0, phi_F_u0)
         # loss += self.Comm_strength * loss_Comm
         
+        loss_Lagr = 0.
+        u = u0 
+        for _ in range(4):
+            phi_u = self(u, 1)[0][0]
+            loss_Lagr += self.compute_Lagrangian(phi_u).mean() * self.fine_solve_dt.T
+            u = self.fine_solve_dt(u)
+        loss += self.Lagr_strength * loss_Lagr
+
         metrics = {'loss': loss.detach()}
         for t in range(self.sequence_len):
             metrics[f'loss_step{t+1}'] = losses[t].detach()
@@ -537,6 +567,7 @@ class SolutionMapBase(GenericModel):
 #         metrics['loss_H'] = loss_H.detach()
         metrics['loss_S'] = loss_S.detach()
         metrics['loss_Comm'] = loss_Comm.detach()
+        metrics['loss_Lagr'] = loss_Lagr.detach()
 
         if stage == 'val': 
             self.validation_step_outputs.append({'batch_size': len(batch[0]), 'metrics': metrics})
@@ -544,7 +575,6 @@ class SolutionMapBase(GenericModel):
         elif stage == 'test': 
             self.test_step_outputs.append({'batch_size': len(batch[0]), 'metrics': metrics})
         return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
-        #return loss
 
     
 class SolutionMap(SolutionMapBase):
