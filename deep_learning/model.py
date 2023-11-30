@@ -326,7 +326,7 @@ NSTEPS_TO_EVAL = 10
      
         
 class GenericModel(pl.LightningModule):
-    def __init__(self, loss_fn='MSELoss', loss_kwargs=None, optimizer_fn='AdamW', optimizer_kwargs=None, lr_scheduler_fn=None, lr_scheduler_kwargs=None, lr_scheduler_interval='epoch'):
+    def __init__(self, loss_fn='MSELoss', loss_kwargs=None, optimizer_fn='AdamW', optimizer_kwargs=None, lr_scheduler_fn=None, lr_scheduler_kwargs=None, lr_scheduler_interval='epoch', lr_mult=1.):
         super(GenericModel, self).__init__()
         
         self.loss_fn = get_loss_fn(loss_fn, **loss_kwargs) if loss_kwargs is not None else get_loss_fn(loss_fn)
@@ -335,6 +335,7 @@ class GenericModel(pl.LightningModule):
         self.lr_scheduler_fn = LR_SCHEDULER_DICT[lr_scheduler_fn] if lr_scheduler_fn is not None else None
         self.lr_scheduler_kwargs = lr_scheduler_kwargs
         self.lr_scheduler_interval = lr_scheduler_interval
+        self.lr_mult = lr_mult
 
         self.training_step_outputs = [] 
         self.validation_step_outputs = []
@@ -379,7 +380,17 @@ class GenericModel(pl.LightningModule):
             self.log_dict(logs, sync_dist=True, rank_zero_only=True)
 
     def configure_optimizers(self):
-        optimizer = self.optimizer_fn(self.parameters(), **self.optimizer_kwargs)
+        params = list(self.named_parameters())
+
+        def is_last_layer(n): return 'layers.4' in n
+
+        grouped_parameters = [
+            {"params": [p for n, p in params if is_last_layer(n)], 'lr': self.optimizer_kwargs['lr']*self.lr_mult},
+            {"params": [p for n, p in params if not is_last_layer(n)]},
+        ]
+
+        optimizer = self.optimizer_fn(grouped_parameters, **self.optimizer_kwargs)
+        #optimizer = self.optimizer_fn(self.parameters(), **self.optimizer_kwargs)
         if self.lr_scheduler_fn is not None:
             lr_scheduler = {
                 'scheduler': self.lr_scheduler_fn(optimizer, **self.lr_scheduler_kwargs),
@@ -440,17 +451,17 @@ class SolutionMapBase(GenericModel):
             H_errors[t] = nn.functional.l1_loss(self.compute_H(ut_pred), H0)
              
             hs = res_hs[t] 
-            V_losses[t] = torch.stack([nn.functional.mse_loss(hs[i], hs[i-1]) for i in range(1, len(hs))]).sum() 
+#             V_losses[t] = torch.stack([nn.functional.mse_loss(hs[i], hs[i-1]) for i in range(1, len(hs))]).sum() 
 
         loss = losses @ self.weights
         
 #         loss_H = H_losses.sum()
 #         loss += self.H_strength * loss_H  # disable H gradient computation for now 
         loss_S = S_losses.sum()
-        loss += self.S_strength * self.Delta_t * loss_S
+#         loss += self.S_strength * self.Delta_t * loss_S
         
         loss_V = V_losses.sum()
-        loss += self.V_strength * loss_V 
+#         loss += self.V_strength * loss_V 
         
 #         if isinstance(self.h2h, HamiltonianReversibleNetwork):
 #             loss_WS = self.WS_strength * self.h2h.compute_weight_smoothness()
@@ -463,7 +474,7 @@ class SolutionMapBase(GenericModel):
         phi_F_u0 = self(self.fine_solve_dt(u0), 1)[0][0]
         F_phi_u0 = self.fine_solve_dt(self(u0, 1)[0][0])
         loss_Comm = self.loss_fn(F_phi_u0, phi_F_u0)
-        loss += self.Comm_strength * loss_Comm
+        # loss += self.Comm_strength * loss_Comm
 
         self.log('step_loss', loss, on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
         metrics = {'loss': loss.detach()}
@@ -511,12 +522,12 @@ class SolutionMapBase(GenericModel):
 #         loss_H = H_losses.sum()
 #         loss += self.H_strength * loss_H  # disable H gradient computation for now 
         loss_S = S_losses.sum()
-        loss += self.S_strength * self.Delta_t * loss_S
+#         loss += self.S_strength * self.Delta_t * loss_S
         
         phi_F_u0 = self(self.fine_solve_dt(u0), 1)[0][0]
         F_phi_u0 = self.fine_solve_dt(self(u0, 1)[0][0])
         loss_Comm = self.loss_fn(F_phi_u0, phi_F_u0)
-        loss += self.Comm_strength * loss_Comm
+        # loss += self.Comm_strength * loss_Comm
         
         metrics = {'loss': loss.detach()}
         for t in range(self.sequence_len):
@@ -550,7 +561,7 @@ class SolutionMap(SolutionMapBase):
             self.compute_H = lambda u: fpu.compute_H(u[:, :6], u[:, 6:])
             self.compute_Lagrangian = lambda u: fpu.compute_Lagrangian(u[:, :6], u[:, 6:])
             self.input_size = 12
-            self.fine_solver_dt = VelocityVerlet(lambda q: fpu.compute_q_ddot(q), Delta_t/256, 4)
+            self.fine_solver_dt = VelocityVerlet(lambda q: fpu.compute_q_ddot(q), Delta_t/128, 8)
         elif problem == 'lennardjones':
             lj = LennardJones(**problem_kwargs)
             self.compute_H = lambda u: lj.compute_H(u[:, :14], u[:, 14:])
