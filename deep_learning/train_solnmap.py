@@ -72,6 +72,7 @@ if __name__ == '__main__':
     ap.add_argument('--weight_init', default='', help='weight initialization')
     ap.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     ap.add_argument('--lr_decay', default=1e-3, type=float, help='dacay rate of lambda lr scheduler')
+    ap.add_argument('--lr_mult', default=1., type=float, help='multiplicative factor for lr of last layer')
     ap.add_argument('--num_epochs', default=1000, type=int, help='number of epochs')
     ap.add_argument('--steps_per_cycle', default=200000, type=int, help='steps per cycle of the custom cyclic lr scheduler')
     ap.add_argument('--gpus', default=[0], nargs='+', type=int, help='gpus')
@@ -105,12 +106,13 @@ if __name__ == '__main__':
     #     optimizer_kwargs = {},
         optimizer_kwargs = {'lr': args.lr, 'weight_decay': 1e-2}, 
     #     optimizer_kwargs = {'lr': args.lr, 'nesterov': False, 'momentum': 0.}, 
-        lr_scheduler_fn = None,
-    #     lr_scheduler_fn = 'OneCycleLR',
-        lr_scheduler_kwargs = {'max_lr': args.lr, 
+        lr_mult = args.lr_mult,
+    #     lr_scheduler_fn = None,
+        lr_scheduler_fn = 'OneCycleLR',
+        lr_scheduler_kwargs = {'max_lr': [args.lr * args.lr_mult, args.lr], 
     #         'total_steps': 1600000,
             'epochs': args.num_epochs, 'steps_per_epoch': int(math.ceil(160000/args.batch_size)), 
-            'anneal_strategy': 'cos', 'cycle_momentum': False, 'three_phase': False, 'pct_start': 0.3},
+            'anneal_strategy': 'cos', 'cycle_momentum': False, 'three_phase': False, 'pct_start': 0.0},
     #     lr_scheduler_fn = 'ReduceLROnPlateau',
     #     lr_scheduler_kwargs = {'factor': 0.85, 'patience': 5, 'cooldown': 5},
     #     lr_scheduler_fn = 'LambdaLR', 
@@ -178,6 +180,7 @@ if __name__ == '__main__':
         lr_scheduler_fn=CONFIG['lr_scheduler_fn'],
         lr_scheduler_kwargs=CONFIG['lr_scheduler_kwargs'],
         lr_scheduler_interval=CONFIG['lr_scheduler_interval'],
+        lr_mult=CONFIG['lr_mult'],
         H_strength=CONFIG['H_strength'],
         WS_strength=CONFIG['WS_strength'],
         S_strength=CONFIG['S_strength'],
