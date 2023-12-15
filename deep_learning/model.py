@@ -173,11 +173,13 @@ class ResMLP(nn.Module):
         for i, layer in enumerate(self.layers[:-1]):
             identity = x 
             x = layer(x)
-            if self.use_bn:
-                x = self.bn_layers[i](x)
+            # if self.use_bn:
+            #     x = self.bn_layers[i](x)
             x = self.activation(x)
             if layer.in_features == layer.out_features:
                 x = identity + self.scale * x
+            if self.use_bn:
+                x = self.bn_layers[i](x)
             if return_hidden: 
                 hs.append(x) 
         
@@ -238,6 +240,53 @@ class ResMLP2(nn.Module):
         else:
             return init_x + x
         
+
+class ResMLP3(nn.Module):
+    """Multi-layer perceptron with residual connections between layers of equal width"""
+
+    def __init__(self, layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale):
+        super(ResMLP3, self).__init__()
+
+        self.layer_sizes = layer_sizes
+        self.layers = nn.ModuleList(
+            [nn.Linear(self.layer_sizes[i], self.layer_sizes[i+1]) for i in range(len(self.layer_sizes)-1)]
+        )
+        self.activation = get_activation(activation_fn, **activation_kwargs)
+        self.use_bn = use_bn
+        if self.use_bn:
+            self.bn_layers = nn.ModuleList(
+                [nn.BatchNorm1d(self.layer_sizes[i+1]) for i in range(len(self.layer_sizes)-2)]
+            )
+        self.scale = 1. / len(self.layers) if use_scale else 1.
+
+    def forward(self, x, return_hidden=False):
+        hs = []
+        for i, layer in enumerate(self.layers[:-1]):
+            identity = x
+            x = layer(x)
+            # if self.use_bn:
+            #     x = self.bn_layers[i](x)
+            x = self.activation(x)
+            if layer.in_features == layer.out_features:
+                x = identity + self.scale * x
+            if self.use_bn:
+                x = self.bn_layers[i](x)
+            if return_hidden:
+                hs.append(x)
+
+        output_layer = self.layers[-1]
+        identity = x
+        # x = output_layer(x)
+        x = torch.matmul(x, torch.t(output_layer.weight))
+        if output_layer.in_features == output_layer.out_features:
+            x = self.activation(x)
+            x = identity + self.scale * x
+
+        if return_hidden:
+            return x, hs
+        else:
+            return x
+
 
 class HamiltonianReversibleBlock(nn.Module):
     """Hamiltonian Reversible Block"""
@@ -351,9 +400,10 @@ def get_model(model_name, layer_sizes, activation_fn, activation_kwargs, use_bn,
         "MLP": MLP, 
         "ResMLP": ResMLP,
         "ResMLP2": ResMLP2,
+        "ResMLP3": ResMLP3,
         "HamiltonianReversibleNetwork": HamiltonianReversibleNetwork
     }[model_name]
-    if model_name == "ResMLP" or model_name == "ResMLP2":
+    if "ResMLP" in model_name:
         return model_fn(layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale)
     else:
         return model_fn(layer_sizes, activation_fn, activation_kwargs, use_bn)
@@ -387,7 +437,7 @@ class GenericModel(pl.LightningModule):
         self.validation_step_outputs = []
         self.test_step_outputs = []
 
-        self.automatic_optimization = False
+      #   self.automatic_optimization = False
 
     def training_step(self, batch, batch_idx):
         pass
@@ -427,22 +477,22 @@ class GenericModel(pl.LightningModule):
         if self.trainer.is_global_zero:
             self.log_dict(logs, sync_dist=True, rank_zero_only=True)
 
-    # def configure_optimizers(self):
-    #     optimizer = self.optimizer_fn(self.parameters(), **self.optimizer_kwargs)
-    #     if self.lr_scheduler_fn is not None:
-    #         lr_scheduler = {
-    #             'scheduler': self.lr_scheduler_fn(optimizer, **self.lr_scheduler_kwargs),
-    #             'interval': self.lr_scheduler_interval,
-    #             'monitor': 'train/loss'
-    #         }
-    #         return {'optimizer': optimizer, 'lr_scheduler': lr_scheduler}
-    #     else:
-    #         return optimizer
-        
     def configure_optimizers(self):
-        params = list(self.named_parameters())
+        optimizer = self.optimizer_fn(self.parameters(), **self.optimizer_kwargs)
+        if self.lr_scheduler_fn is not None:
+            lr_scheduler = {
+                'scheduler': self.lr_scheduler_fn(optimizer, **self.lr_scheduler_kwargs),
+                'interval': self.lr_scheduler_interval,
+                'monitor': 'train/loss'
+            }
+            return {'optimizer': optimizer, 'lr_scheduler': lr_scheduler}
+        else:
+            return optimizer
+        
+    # def configure_optimizers(self):
+    #     params = list(self.named_parameters())
 
-        def is_last_layer(n): return 'layers.4' in n
+    #     def is_last_layer(n): return 'layers.4' in n
 
     #     # grouped_parameters = [
     #     #     {"params": [p for n, p in params if is_last_layer(n)], 'lr': self.optimizer_kwargs['lr']*self.lr_mult},
@@ -450,18 +500,18 @@ class GenericModel(pl.LightningModule):
     #     # ]
     #     # optimizer = self.optimizer_fn(grouped_parameters, **self.optimizer_kwargs)
         
-        optimizer1 = self.optimizer_fn([p for n, p in params if is_last_layer(n)], **self.optimizer_kwargs)
-        optimizer2 = self.optimizer_fn([p for n, p in params if not is_last_layer(n)], **self.optimizer_kwargs)
+    #     optimizer1 = self.optimizer_fn([p for n, p in params if is_last_layer(n)], **self.optimizer_kwargs)
+    #     optimizer2 = self.optimizer_fn([p for n, p in params if not is_last_layer(n)], **self.optimizer_kwargs)
 
-        if self.lr_scheduler_fn is not None:
-            lr_scheduler = {
-                'scheduler': self.lr_scheduler_fn(optimizer2, **self.lr_scheduler_kwargs),
-                'interval': self.lr_scheduler_interval,
-                'monitor': 'train/loss'
-            }
-            return {'optimizer': optimizer1}, {'optimizer': optimizer2, 'lr_scheduler': lr_scheduler}
-        else:
-            return [optimizer1, optimizer2]
+    #     if self.lr_scheduler_fn is not None:
+    #         lr_scheduler = {
+    #             'scheduler': self.lr_scheduler_fn(optimizer2, **self.lr_scheduler_kwargs),
+    #             'interval': self.lr_scheduler_interval,
+    #             'monitor': 'train/loss'
+    #         }
+    #         return {'optimizer': optimizer1}, {'optimizer': optimizer2, 'lr_scheduler': lr_scheduler}
+    #     else:
+    #         return [optimizer1, optimizer2]
 
 
 class SolutionMapBase(GenericModel):
@@ -538,12 +588,12 @@ class SolutionMapBase(GenericModel):
         loss_Comm = self.loss_fn(F_phi_u0, phi_F_u0)
         loss += self.Comm_strength * loss_Comm
 
-        loss_Lagr = 0.
-        u = u0 
-        for _ in range(4):
-            phi_u = self(u, 1)[0][0]
-            loss_Lagr += self.compute_Lagrangian(phi_u).mean() * self.fine_solver_dt.T
-            u = self.fine_solve_dt(u)
+        # loss_Lagr = 0.
+        # u = u0 
+        # for _ in range(4):
+        #     phi_u = self(u, 1)[0][0]
+        #     loss_Lagr += self.compute_Lagrangian(phi_u).mean() * self.fine_solver_dt.T
+        #     u = self.fine_solve_dt(u)
         # loss += self.Lagr_strength * loss_Lagr
 
         self.log('step_loss', loss, on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
@@ -557,20 +607,20 @@ class SolutionMapBase(GenericModel):
         metrics['loss_S'] = loss_S.detach()
         metrics['loss_V'] = loss_V.detach()
         metrics['loss_Comm'] = loss_Comm.detach()
-        metrics['loss_Lagr'] = loss_Lagr.detach()
+        # metrics['loss_Lagr'] = loss_Lagr.detach()
         
         self.training_step_outputs.append({'batch_size': len(batch[0]), 'metrics': metrics})
         
-        opt1, opt2 = self.optimizers()
+        # opt1, opt2 = self.optimizers()
 
-        opt1.zero_grad()
-        opt2.zero_grad()
-        self.manual_backward(loss)
-        opt1.step()
-        opt2.step()
+        # opt1.zero_grad()
+        # opt2.zero_grad()
+        # self.manual_backward(loss)
+        # opt1.step()
+        # opt2.step()
         
-        sch = self.lr_schedulers()
-        sch.step()
+        # sch = self.lr_schedulers()
+        # sch.step()
 
         return {'loss': loss, 'batch_size': len(batch[0]), 'metrics': metrics}
 
@@ -610,12 +660,12 @@ class SolutionMapBase(GenericModel):
         loss_Comm = self.loss_fn(F_phi_u0, phi_F_u0)
         loss += self.Comm_strength * loss_Comm
         
-        loss_Lagr = 0.
-        u = u0 
-        for _ in range(4):
-            phi_u = self(u, 1)[0][0]
-            loss_Lagr += self.compute_Lagrangian(phi_u).mean() * self.fine_solver_dt.T
-            u = self.fine_solve_dt(u)
+        # loss_Lagr = 0.
+        # u = u0 
+        # for _ in range(4):
+        #     phi_u = self(u, 1)[0][0]
+        #     loss_Lagr += self.compute_Lagrangian(phi_u).mean() * self.fine_solver_dt.T
+        #     u = self.fine_solve_dt(u)
         # loss += self.Lagr_strength * loss_Lagr
 
         metrics = {'loss': loss.detach()}
@@ -626,7 +676,7 @@ class SolutionMapBase(GenericModel):
 #         metrics['loss_H'] = loss_H.detach()
         metrics['loss_S'] = loss_S.detach()
         metrics['loss_Comm'] = loss_Comm.detach()
-        metrics['loss_Lagr'] = loss_Lagr.detach()
+        # metrics['loss_Lagr'] = loss_Lagr.detach()
 
         if stage == 'val': 
             self.validation_step_outputs.append({'batch_size': len(batch[0]), 'metrics': metrics})
