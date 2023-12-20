@@ -1,15 +1,12 @@
 #!/bin/bash 
 
 PROBLEM=fpu
-DELTAT=1e-0
-NFINE=65536  # 2^16
-#NFINE=64  # 2^6
+T_INIT=0.
+T_END=400.
+N=200
+NFINE=$((2**17))
 METHOD=McAte5
-DATADIR=../data/fpu/omega50/rhmc-H0/ma5_dt2.5e-1_h1.5259e-5_Nchains100_Njumps2000_sigma1e-1/ma5_Dt1e0_h1.5259e-5/
-USE_FLOAT64X4=true
+DATADIR=../data/fpu/omega300/rhmc-H0/css4_dt4e-1_h5e-6_Nchains100_Njumps2000_sigma1e-1/ma5_Dt2e0_h1.5259e-5
+OMEGA=300.
 
-julia generate_targets.jl $PROBLEM $DELTAT $NFINE $METHOD $DATADIR/U0.csv $DATADIR/U1.csv $USE_FLOAT64X4 &&
-julia generate_targets.jl $PROBLEM $DELTAT $NFINE $METHOD $DATADIR/U1.csv $DATADIR/U2.csv $USE_FLOAT64X4 &&
-julia generate_targets.jl $PROBLEM $DELTAT $NFINE $METHOD $DATADIR/U2.csv $DATADIR/U3.csv $USE_FLOAT64X4 &&
-julia generate_targets.jl $PROBLEM $DELTAT $NFINE $METHOD $DATADIR/U3.csv $DATADIR/U4.csv $USE_FLOAT64X4 &&
-julia generate_targets.jl $PROBLEM $DELTAT $NFINE $METHOD $DATADIR/U4.csv $DATADIR/U5.csv $USE_FLOAT64X4
+julia targets.jl $PROBLEM $T_INIT $T_END $N $DATADIR --Nf $NFINE -f $METHOD --fpu_omega $OMEGA --use_float64x4
