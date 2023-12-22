@@ -7,6 +7,7 @@ from networks.resnet import MLP, ResMLP, ResMLP2, ResMLP3
 from networks.hrn import HamiltonianReversibleNetwork
 from networks.equiv import EquivarianceNetwork
 from networks.unet import UNet1D
+from networks.attention import AttentionMLP
 from networks.friction import FrictionBlock
 
 from loss import get_loss_fn
@@ -61,6 +62,7 @@ def get_model(model_name, layer_sizes, activation_fn, activation_kwargs, use_bn,
         "HamiltonianReversibleNetwork": HamiltonianReversibleNetwork,
         "EquivarianceNetwork": EquivarianceNetwork,
         "UNet1D": UNet1D,
+        "AttentionMLP": AttentionMLP,
     }[model_name]
     if "ResMLP" in model_name:
         return model_fn(layer_sizes, activation_fn, activation_kwargs, use_bn, use_scale)
@@ -68,6 +70,8 @@ def get_model(model_name, layer_sizes, activation_fn, activation_kwargs, use_bn,
         return model_fn(7, 2, 200, 3, activation_fn, activation_kwargs, use_bn)
     elif model_name == "UNet1D":
         return model_fn(d=6, fc_hidden_nodes=500)
+    elif model_name == "AttentionMLP":
+        return model_fn(input_dim=12, output_dim=12, hidden_dim=200, n_hidden_layers=5, activation_fn=activation_fn, activation_kwargs=activation_kwargs)
     else:
         return model_fn(layer_sizes, activation_fn, activation_kwargs, use_bn)
 
@@ -249,7 +253,7 @@ class SolutionMapBase(GenericModel):
         phi_F_u0 = self(self.fine_solve_dt(u0), 1)[0][0]
         F_phi_u0 = self.fine_solve_dt(self(u0, 1)[0][0])
         loss_Comm = self.loss_fn(F_phi_u0, phi_F_u0)
-        loss += self.Comm_strength * loss_Comm
+        # loss += self.Comm_strength * loss_Comm
 
         # loss_Lagr = 0.
         # u = u0 
@@ -321,7 +325,7 @@ class SolutionMapBase(GenericModel):
         phi_F_u0 = self(self.fine_solve_dt(u0), 1)[0][0]
         F_phi_u0 = self.fine_solve_dt(self(u0, 1)[0][0])
         loss_Comm = self.loss_fn(F_phi_u0, phi_F_u0)
-        loss += self.Comm_strength * loss_Comm
+        # loss += self.Comm_strength * loss_Comm
         
         # loss_Lagr = 0.
         # u = u0 
@@ -413,6 +417,76 @@ class SolutionMap(SolutionMapBase):
             self.h2o = nn.Linear(self.hidden_size, self.input_size, bias=False)
             self.h2o.weight = nn.Parameter(W.T, requires_grad=False)
         
+        self.friction = FrictionBlock(d=self.input_size//2, init_gamma=init_gamma)
+    
+    def forward_1step(self, u):
+        u = self.i2h(u)
+        u = self.h2h(u)
+        u = self.h2o(u)
+        u = u + self.friction(u)
+        return u
+    
+    def forward(self, u0, sequence_len):
+        res = []
+        res_hs = []
+
+        hidden = self.i2h(u0)
+        for _ in range(sequence_len):
+            hidden, hs = self.h2h(hidden, return_hidden=True)
+            out = self.h2o(hidden)
+            out = out + self.friction(out)
+            res.append(out)
+            res_hs.append(hs) 
+
+        return res, res_hs
+
+    def fine_solve_dt(self, u):
+        d = self.input_size // 2
+        return torch.cat(self.fine_solver_dt.solve(u[:, :d], u[:, d:]), dim=1)
+
+
+class SolutionMapClean(SolutionMapBase):
+    def __init__(self, model_config, Delta_t, problem, problem_kwargs=None, init_gamma=0.0, **kwargs):
+        super(SolutionMapClean, self).__init__(**kwargs)
+        
+        self.save_hyperparameters()
+        
+        if problem_kwargs is None:
+            problem_kwargs = {}
+            
+        if problem == 'fpu':
+            fpu = FPU(**problem_kwargs)
+            self.compute_H = lambda u: fpu.compute_H(u[:, :6], u[:, 6:])
+            self.compute_Lagrangian = lambda u: fpu.compute_Lagrangian(u[:, :6], u[:, 6:])
+            self.input_size = 12
+            self.fine_solver_dt = VelocityVerlet(lambda q: fpu.compute_q_ddot(q), Delta_t/128, 8)
+        elif problem == 'lennardjones':
+            lj = LennardJones(**problem_kwargs)
+            self.compute_H = lambda u: lj.compute_H(u[:, :14], u[:, 14:])
+            self.compute_Lagrangian = lambda u: lj.compute_Lagrangian(u[:, :14], u[:, 14:])
+            self.input_size = 28
+            self.fine_solver_dt = VelocityVerlet(lambda x: lj.compute_x_ddot(x), Delta_t/256, 4)
+        else:
+            self.compute_H = None 
+            self.input_size = None
+
+        self.Delta_t = Delta_t
+        
+        networks_dict = {
+            "Identity": nn.Identity,
+            "MLP": MLP, 
+            "ResMLP": ResMLP,
+            "ResMLP2": ResMLP2,
+            "ResMLP3": ResMLP3,
+            "HamiltonianReversibleNetwork": HamiltonianReversibleNetwork,
+            "EquivarianceNetwork": EquivarianceNetwork,
+            "UNet1D": UNet1D,
+            "AttentionMLP": AttentionMLP,
+            }
+        
+        self.i2h = networks_dict[model_config.i2h_network](**model_config.i2h_config)
+        self.h2h = networks_dict[model_config.h2h_network](**model_config.h2h_config)
+        self.h2o = networks_dict[model_config.h2o_network](**model_config.h2o_config)
         self.friction = FrictionBlock(d=self.input_size//2, init_gamma=init_gamma)
     
     def forward_1step(self, u):
