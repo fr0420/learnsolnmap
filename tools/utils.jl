@@ -21,6 +21,25 @@ function save_all_iterations(
 end
 
 
+function save_all_iterations(
+    dir::String, 
+    p_all::AbstractArray{T, 3}, 
+    q_all::AbstractArray{T, 3}, 
+    dtype::Type,
+    diagnostics::Vector{Dict{String, Vector}}) where T<:AbstractFloat
+    for k in axes(p_all, 3)
+        subdir = joinpath(dir, "k=$(k-1)")
+        path = joinpath(subdir, "u.csv")
+        save_csv(path, p_all[:, :, k], q_all[:, :, k], dtype)
+    end
+    for k in 1:length(diagnostics)
+        subdir = joinpath(dir, "k=$(k-1)")
+        path = joinpath(subdir, "diagnostics.csv")
+        save_csv(path, diagnostics[k])
+    end
+end
+
+
 function save_csv(
     filepath::String, 
     P::AbstractArray{T, 2}, 
@@ -36,6 +55,17 @@ function save_csv(
     
     mkpath(dirname(filepath))
     CSV.write(filepath, hcat(df_P, df_Q))
+    
+end
+
+
+function save_csv(
+    filepath::String, 
+    dict::Dict{String, Vector})
+    """Save a dictionary of vectors to a csv file"""
+    
+    mkpath(dirname(filepath))
+    CSV.write(filepath, DataFrame(dict))
     
 end
 

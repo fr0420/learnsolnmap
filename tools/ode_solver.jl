@@ -15,8 +15,8 @@ METHODS = Dict(
 function ode_solve(
         A::Function, 
         method::OrdinaryDiffEqAlgorithm, 
-        p0::AbstractArray{T, 1}, 
-        q0::AbstractArray{T, 1}, 
+        v0::AbstractArray{T, 1}, 
+        x0::AbstractArray{T, 1}, 
         t0::Float64, 
         H::Float64,
         nsteps::Integer,
@@ -27,17 +27,17 @@ function ode_solve(
     H = convert(T, H)
         
     h = H/nsteps 
-    prob = SecondOrderODEProblem(A, p0, q0, (t0, t0+H), param);
+    prob = SecondOrderODEProblem(A, v0, x0, (t0, t0+H), param);
     if retfull 
         sol = solve(prob, method, tstops=t0:h:(t0+H), adaptive=false, save_everystep=true);
-        P = hcat([u.x[1] for u in sol.u]...)   
-        Q = hcat([u.x[2] for u in sol.u]...)
-        return P, Q
+        V = hcat([u.x[1] for u in sol.u]...)   
+        X = hcat([u.x[2] for u in sol.u]...)
+        return V, X
     else 
         sol = solve(prob, method, tstops=t0:h:(t0+H), adaptive=false, save_everystep=false);
-        p = sol[end].x[1]
-        q = sol[end].x[2]
-        return p, q
+        v = sol[end].x[1]
+        x = sol[end].x[2]
+        return v, x
     end
 end
 
