@@ -30,8 +30,8 @@ export PYTHONFAULTHANDLER=1
 # set the network interface
 #export NCCL_SOCKET_IFNAME=^docker0,lo
 
-python3 train_solnmap.py --group lennardjones --Delta_t 1e-4 --data_dir $LJ_DATA_DIR4  --h2h_model HamiltonianReversibleNetwork --h2h_layer_sizes 28 2000 2000 28 --sequence_weights 1 1 1 1 1 --num_epochs 1000 --batch_size 100 --lr 1e-3 --S_strength 0 --gpus 1  &
-python3 train_solnmap.py --group lennardjones --Delta_t 1e-4 --data_dir $LJ_DATA_DIR4  --h2h_model HamiltonianReversibleNetwork --h2h_layer_sizes 28 2000 2000 28 --sequence_weights 1 1 1 1 1 --num_epochs 1000 --batch_size 100 --lr 1e-4 --S_strength 0 --gpus 1  &
-python3 train_solnmap.py --group lennardjones --Delta_t 1e-4 --data_dir $LJ_DATA_DIR4  --h2h_model ResMLP --h2h_layer_sizes 28 1000 1000 1000 1000 28 --sequence_weights 1 1 1 1 1 --num_epochs 1000 --lr 1e-3 --S_strength 0 --gpus 0  &
+python3 ../train_solnmap.py --group lennardjones --Delta_t 1e-4 --data_dir $LJ_DATA_DIR4  --h2h_model HamiltonianReversibleNetwork --h2h_layer_sizes 28 2000 2000 28 --sequence_weights 1 1 1 1 1 --num_epochs 1000 --batch_size 100 --lr 1e-3 --S_strength 0 --gpus 1  &
+python3 ../train_solnmap.py --group lennardjones --Delta_t 1e-4 --data_dir $LJ_DATA_DIR4  --h2h_model HamiltonianReversibleNetwork --h2h_layer_sizes 28 2000 2000 28 --sequence_weights 1 1 1 1 1 --num_epochs 1000 --batch_size 100 --lr 1e-4 --S_strength 0 --gpus 1  &
+python3 ../train_solnmap.py --group lennardjones --Delta_t 1e-4 --data_dir $LJ_DATA_DIR4  --h2h_model ResMLP --h2h_layer_sizes 28 1000 1000 1000 1000 28 --sequence_weights 1 1 1 1 1 --num_epochs 1000 --lr 1e-3 --S_strength 0 --gpus 0  &
 
 wait 
