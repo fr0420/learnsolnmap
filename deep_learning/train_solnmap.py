@@ -64,11 +64,13 @@ if __name__ == '__main__':
     ap.add_argument('--i2h_layer_sizes', default=None, nargs='+', type=int, help='i2h layer sizes')
     ap.add_argument('--h2o_layer_sizes', default=None, nargs='+', type=int, help='h2o layer sizes')
     ap.add_argument('--activation', default='ELU', help='activation function')
+    ap.add_argument('--use_bn', default=False, action='store_true', help='use batch normalization')
     ap.add_argument('--sequence_weights', default=[1, 1, 1, 1, 1], nargs='+', type=int, help='sequence weights')
     ap.add_argument('--WS_strength', default=0., type=float, help='weight smoothness regularization strength')
     ap.add_argument('--S_strength', default=0., type=float, help='lagrangian regularization strength')
     ap.add_argument('--V_strength', default=0., type=float, help='transport cost regularization strength')
     ap.add_argument('--Comm_strength', default=0., type=float, help='commute with F_dt regularization strength')
+    ap.add_argument('--Lagr_strength', default=0., type=float, help='lagrangian regularization strength')
     ap.add_argument('--weight_init', default='', help='weight initialization')
     ap.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     ap.add_argument('--lr_decay', default=1e-3, type=float, help='dacay rate of lambda lr scheduler')
@@ -83,7 +85,8 @@ if __name__ == '__main__':
     # Config dictionary
     CONFIG = dict (
         group = args.group,
-        problem_kwargs = {'Omega': args.omega},
+        problem_kwargs = {}, 
+     #    problem_kwargs = {'Omega': args.omega},
         Delta_t = args.Delta_t,
         seed = args.random_seed,
         train_dir = os.path.join(args.data_dir, 'train'),
@@ -95,21 +98,21 @@ if __name__ == '__main__':
         h2o_layer_sizes = args.h2o_layer_sizes,
         activation_fn = args.activation,
         activation_kwargs = {},
-        use_bn = False,
+        use_bn = args.use_bn,
         use_scale = True,
         init_gamma = 0.,
-    #     loss_fn = 'MSELoss', loss_kwargs = {},
-        loss_fn = 'MeanEnergyNormSquaredLoss',
-        loss_kwargs = {'problem': args.group, 'problem_kwargs': {'Omega': args.omega}},
+        loss_fn = 'MSELoss', loss_kwargs = {},
+    #    loss_fn = 'MeanEnergyNormSquaredLoss',
+    #    loss_kwargs = {'problem': args.group, 'problem_kwargs': {'Omega': args.omega}},
         optimizer_fn = 'AdamW',
     #     optimizer_fn = 'SGD',
     #     optimizer_kwargs = {},
         optimizer_kwargs = {'lr': args.lr, 'weight_decay': 1e-2}, 
     #     optimizer_kwargs = {'lr': args.lr, 'nesterov': False, 'momentum': 0.}, 
         lr_mult = args.lr_mult,
-    #     lr_scheduler_fn = None,
-        lr_scheduler_fn = 'OneCycleLR',
-        lr_scheduler_kwargs = {'max_lr': [args.lr * args.lr_mult, args.lr], 
+        lr_scheduler_fn = None,
+    #     lr_scheduler_fn = 'OneCycleLR',
+        lr_scheduler_kwargs = {'max_lr': args.lr, 
     #         'total_steps': 1600000,
             'epochs': args.num_epochs, 'steps_per_epoch': int(math.ceil(160000/args.batch_size)), 
             'anneal_strategy': 'cos', 'cycle_momentum': False, 'three_phase': False, 'pct_start': 0.0},
@@ -126,6 +129,7 @@ if __name__ == '__main__':
         S_strength = args.S_strength, 
         V_strength = args.V_strength,
         Comm_strength = args.Comm_strength,
+        Lagr_strength = args.Lagr_strength,
         sequence_weights = args.sequence_weights,
         sequence_len = len(args.sequence_weights),
         n1 = 3,
@@ -186,6 +190,7 @@ if __name__ == '__main__':
         S_strength=CONFIG['S_strength'],
         V_strength=CONFIG['V_strength'],
         Comm_strength=CONFIG['Comm_strength'],
+        Lagr_strength=CONFIG['Lagr_strength'],
         problem=CONFIG['group'],
         problem_kwargs=CONFIG['problem_kwargs'],
         Delta_t=CONFIG['Delta_t'],
