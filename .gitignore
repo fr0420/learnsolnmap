@@ -48,18 +48,14 @@ venv.bak/
 # IDE caches
 .idea/
 
-### Data and model files 
+### Data files, model ckpts, job logs 
 
 data/
 **/checkpoints/
 **/solutionmap/
+**/logs/
 **/lightning_logs/
 **/wandb/
 **/res/
 parareal/temp
 notebooks/stability/
-
-### Job logs 
-
-logs/
-parareal/logs/
