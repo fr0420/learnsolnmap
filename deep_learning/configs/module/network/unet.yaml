@@ -1,0 +1,20 @@
+i2h:
+  _target_: torch.nn.Identity
+
+h2h:
+  _target_: networks.unet.UNet1D
+  d: 6
+  in_channels: 2
+  out_channels: 2
+  activation: 
+    _target_: torch.nn.ELU
+  n_blocks: 3 
+  k: 4
+  kernel_size: 3
+  use_bn: True
+  n_conv: 1
+  fc_n_nodes: 500
+  fc_n_layers: 2
+
+h2o:
+  _target_: torch.nn.Identity

@@ -1,0 +1,49 @@
+# @package _global_
+
+# specify here default configuration
+# order of defaults determines the order in which configs override each other
+defaults:
+  - _self_
+  - datamodule: fpu
+  - module: solutionmap
+  - callbacks:
+    - model_checkpoint
+    - lr_monitor
+    - fixed_seq_weights
+    - metrics_logger
+    - tqdm_progress_bar
+  - loggers: 
+    - wandb
+  - trainer: default
+  - paths: default
+  - hydra: default
+  
+  # debugging config (enable through command line, e.g. `python train.py debug=default)
+  - debug: null
+
+# seed for random number generators in pytorch, numpy and python.random
+seed: 42
+
+# evaluate on test set, using best model weights achieved during training
+# lightning chooses best weights based on the metric specified in checkpoint callback
+test: True
+
+# task name, determines output directory path
+task_name: train
+
+# name and id of the run, accessed by loggers and determine output directory path
+run_name: ${now:%Y%m%d}-${now:%H%M%S}
+run_id: ${randomid:6}
+
+# problem name
+problem_name: fpu
+
+# provide checkpoint path to resume training
+# resume_from_ckpt: /workspace/projects_rui/learnsolnmap/deep_learning/logs/debug/runs/20240110-143201_mc0tm6/checkpoints/last.ckpt
+# run_name: ${get_runname:${resume_from_ckpt}}
+# run_id: ${get_runid:${resume_from_ckpt}}
+
+# initialize model with checkpoint  
+# init_model_ckpt:
+
+

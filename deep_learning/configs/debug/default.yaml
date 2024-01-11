@@ -1,0 +1,29 @@
+# @package _global_
+
+# default debugging setup, runs 1 full epoch
+# other debugging configs can inherit from this one
+
+# overwrite task name so debugging logs are stored in separate folder
+task_name: debug
+
+# disable callbacks and loggers during debugging
+defaults:
+  - override /callbacks: 
+    - fixed_seq_weights
+    - tqdm_progress_bar
+loggers: null
+
+trainer:
+  max_epochs: 1
+  accelerator: gpu
+  devices: 1
+  enable_checkpointing: False
+  # detect_anomaly: true # raise exception if NaN or +/-inf is detected in any tensor
+
+# runs with execution time profiling
+profiler:
+  _target_: pytorch_lightning.profilers.SimpleProfiler
+  # _target_: pytorch_lightning.profilers.AdvancedProfiler
+  # _target_: pytorch_lightning.profilers.PyTorchProfiler
+  dirpath: ${paths.output_dir}
+  filename: perf-logs
