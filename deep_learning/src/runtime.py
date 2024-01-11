@@ -1,7 +1,7 @@
 import timeit
 import numpy as np
 import torch
-from model import SolutionMap, CorrectionOperator, CorrectionOperator2
+from .models import SolutionMap, CorrectionOperator, CorrectionOperator2
 
 checkpoint_path = "/work/08170/rfang/maverick2/learnsolnmap/solutionmap/2itmmglz/checkpoints/epoch139-val_loss5.260e-05.ckpt"
 model = CorrectionOperator2.load_from_checkpoint(checkpoint_path, strict=False, WS_strength=0.).double()

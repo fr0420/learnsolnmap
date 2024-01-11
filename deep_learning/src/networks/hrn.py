@@ -1,16 +1,15 @@
 import torch
 from torch import nn
-from networks.activation import get_activation
 
 
 class HamiltonianReversibleBlock(nn.Module):
-    """Hamiltonian Reversible Block"""
+    """Hamiltonian Reversible Block."""
     
-    def __init__(self, degree_of_freedom, activation_fn, activation_kwargs):
+    def __init__(self, degree_of_freedom, activation):
         super(HamiltonianReversibleBlock, self).__init__()
         
         self.dof = degree_of_freedom
-        self.activation = get_activation(activation_fn, **activation_kwargs)
+        self.activation = activation
         
         self.layer1 = nn.Linear(self.dof, self.dof)
         self.layer2 = nn.Linear(self.dof, self.dof)
@@ -29,9 +28,9 @@ class HamiltonianReversibleBlock(nn.Module):
 
 
 class HamiltonianReversibleNetwork(nn.Module):
-    """Hamiltonian Reversible Network"""
+    """Hamiltonian Reversible Network."""
     
-    def __init__(self, layer_sizes, activation_fn, activation_kwargs, use_bn):
+    def __init__(self, layer_sizes, activation, use_bn=False):
         super(HamiltonianReversibleNetwork, self).__init__()
         
         self.layer_sizes = layer_sizes
@@ -40,11 +39,11 @@ class HamiltonianReversibleNetwork(nn.Module):
             in_features = self.layer_sizes[i]
             out_features = self.layer_sizes[i+1]
             if in_features == out_features and in_features % 2 == 0:
-                layers.append(HamiltonianReversibleBlock(in_features//2, activation_fn, activation_kwargs))
+                layers.append(HamiltonianReversibleBlock(in_features//2, activation))
             else:
                 layers.append(nn.Linear(in_features, out_features))
         self.layers = nn.ModuleList(layers)
-        self.activation = get_activation(activation_fn, **activation_kwargs) 
+        self.activation = activation
         self.use_bn = use_bn
         if self.use_bn:
             self.bn_layers = nn.ModuleList(

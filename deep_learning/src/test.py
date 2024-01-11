@@ -4,7 +4,7 @@ import logging
 import numpy as np
 import pandas as pd 
 import torch
-from model import SolutionMap, CorrectionOperator, CorrectionOperator2
+from .models import SolutionMap, CorrectionOperator, CorrectionOperator2
 
 
 def load_model(model_name, checkpoint_path):

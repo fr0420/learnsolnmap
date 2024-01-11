@@ -1,17 +1,17 @@
 import torch
 from torch import nn
-from networks.resnet import MLP
+from networks.basics import MLP
 
 
 class EquivarianceLayer(nn.Module):
-    """Equivariance Layer"""
+    """Equivariance Layer."""
 
-    def __init__(self, N, n_hidden_nodes, n_hidden_layers, activation_fn, activation_kwargs, use_bn):
+    def __init__(self, N, n_hidden_nodes, n_hidden_layers, activation, use_bn):
         super(EquivarianceLayer, self).__init__()
 
         n_in = (2*N)**2
         n_out = 2*N
-        self.mlp = MLP([n_in]+[n_hidden_nodes]*n_hidden_layers+[n_out], activation_fn, activation_kwargs, use_bn)
+        self.mlp = MLP([n_in]+[n_hidden_nodes]*n_hidden_layers+[n_out], activation, use_bn)
 
     def forward(self, x):
         scalars, basis = x
@@ -21,15 +21,15 @@ class EquivarianceLayer(nn.Module):
 
 
 class EquivarianceNetwork(nn.Module):
-    """Equivariance Network"""
+    """Equivariance Network."""
 
-    def __init__(self, N, d, n_hidden_nodes, n_hidden_layers, activation_fn, activation_kwargs, use_bn):
+    def __init__(self, N, d, n_hidden_nodes, n_hidden_layers, activation, use_bn):
         super(EquivarianceNetwork, self).__init__()
 
         self.N = N
         self.d = d
         self.layers = nn.ModuleList(
-            EquivarianceLayer(N, n_hidden_nodes, n_hidden_layers, activation_fn, activation_kwargs, use_bn) for _ in range(2*N)
+            EquivarianceLayer(N, n_hidden_nodes, n_hidden_layers, activation, use_bn) for _ in range(2*N)
         )
         
     def forward(self, x, return_hidden=False):

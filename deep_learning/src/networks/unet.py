@@ -1,29 +1,28 @@
 import math
 import torch
 from torch import nn
-from networks.activation import get_activation
 
 
 def get_conv_layer(in_channels, out_channels, kernel_size):
     """
-    Define a stride 1 convolution layer which keeps the input image size unchanged
+    Define a stride 1 convolution layer which keeps the input image size unchanged.
     (kernel_size is required to be an odd number because Conv2d allows only symmetric padding) 
     """
     return nn.Conv1d(in_channels, out_channels, kernel_size, stride=1, padding=(kernel_size-1)//2) 
 
 
 def get_downscale_layer(in_channels, out_channels, kernel_size):
-    """Define a stride 2 convolution layer which halves the input image size"""
+    """Define a stride 2 convolution layer which halves the input image size."""
     return nn.Conv1d(in_channels, out_channels, kernel_size, stride=2, padding=math.ceil(kernel_size/2-1))
 
 
 def get_batchnorm_layer(num_features):
-    """Define a batch normalization layer"""
+    """Define a batch normalization layer."""
     return nn.BatchNorm1d(num_features)
 
 
 class Concatenate(nn.Module):
-    """Concatenate two inputs along the channel dimension"""
+    """Concatenate two inputs along the channel dimension."""
     def __init__(self):
         super(Concatenate, self).__init__()
 
@@ -33,15 +32,15 @@ class Concatenate(nn.Module):
 
 
 class Up(nn.Module):
-    """Upscaling with [Convolution, Batch Norm, Activation] * n, 2x Upsampling, Batch Norm, Activation"""
+    """Upscaling with [Convolution, Batch Norm, Activation] * n, 2x Upsampling, Batch Norm, Activation."""
 
-    def __init__(self, in_channels, out_channels, kernel_size=3, n_conv=1, use_bn=True, upscale=True, activation="ELU"):
+    def __init__(self, in_channels, out_channels, activation, kernel_size=3, n_conv=1, use_bn=True, upscale=True):
         super(Up, self).__init__()
 
         self.n_conv = n_conv
         self.use_bn = use_bn
         self.upscale = upscale
-        self.activation = get_activation(activation)
+        self.activation = activation
 
         # conv layers 
         self.conv_layers = nn.ModuleList(
@@ -51,7 +50,7 @@ class Up(nn.Module):
 
         # upsampling layer 
         if self.upscale:
-            self.up_layer = nn.Upsample(scale_factor=2, mode='nearest')
+            self.up_layer = nn.Upsample(scale_factor=2, mode="nearest")
 
         # batch norm layers 
         if self.use_bn:
@@ -78,14 +77,14 @@ class Up(nn.Module):
 
 
 class Down(nn.Module):
-    """Downscaling with [Stride 2 Convolution, Batch Norm, Activation], Merge, [Convolution, Batch Norm, Activation] * n"""
+    """Downscaling with [Stride 2 Convolution, Batch Norm, Activation], Merge, [Convolution, Batch Norm, Activation] * n."""
 
-    def __init__(self, in_channels, out_channels, kernel_size=3, n_conv=1, use_bn=True, activation="ELU"):
+    def __init__(self, in_channels, out_channels, activation, kernel_size=3, n_conv=1, use_bn=True):
         super(Down, self).__init__()
 
         self.n_conv = n_conv
         self.use_bn = use_bn
-        self.activation = get_activation(activation)
+        self.activation = activation
 
         # downscaling layer 
         self.down_layer = get_downscale_layer(in_channels, out_channels, kernel_size)
@@ -123,10 +122,10 @@ class Down(nn.Module):
 
     
 class UNet1D(nn.Module):
-    """1D U-Net"""
+    """1D U-Net."""
 
-    def __init__(self, d, in_channels=2, out_channels=2, n_blocks=3, k=4, kernel_size=3, use_bn=True, n_conv=1, 
-                 fc_hidden_nodes=500, activation="ELU"):
+    def __init__(self, d, in_channels, out_channels, activation, n_blocks=3, k=4, kernel_size=3, use_bn=True, n_conv=1, 
+                 fc_n_nodes=500, fc_n_layers=2):
         super(UNet1D, self).__init__()
 
         self.d = d
@@ -137,7 +136,8 @@ class UNet1D(nn.Module):
         self.kernel_size = kernel_size 
         self.use_bn = use_bn
         self.n_conv = n_conv
-        self.fc_hidden_nodes = fc_hidden_nodes
+        self.fc_n_nodes = fc_n_nodes
+        self.fc_n_layers = fc_n_layers
         self.activation = activation 
 
         up_blocks = []
@@ -176,15 +176,15 @@ class UNet1D(nn.Module):
 
         n_channels = 2**self.n_blocks * self.k 
         width = 2**self.n_blocks * self.d 
-        self.fc_layer = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(n_channels*width, self.fc_hidden_nodes),
-            get_activation(self.activation),
-            nn.Linear(self.fc_hidden_nodes, self.fc_hidden_nodes),
-            get_activation(self.activation),
-            nn.Linear(self.fc_hidden_nodes, n_channels*width),
-            nn.Unflatten(1, (n_channels, width))
-        )
+        fc_layers = [nn.Flatten()]
+        for i in range(self.fc_n_layers):
+            n_in = n_channels*width if i == 0 else self.fc_n_nodes
+            n_out = self.fc_n_nodes 
+            fc_layers.append(nn.Linear(n_in, n_out))
+            fc_layers.append(self.activation)
+        fc_layers.append(nn.Linear(self.fc_n_nodes, n_channels*width))
+        fc_layers.append(nn.Unflatten(1, (n_channels, width)))
+        self.fc_layers = nn.Sequential(*fc_layers)
 
         self.final_conv = get_conv_layer(in_channels=self.k, out_channels=self.out_channels, kernel_size=1)
 
@@ -197,7 +197,7 @@ class UNet1D(nn.Module):
             x, before_upscale = up(x)
             xs.append(before_upscale)
 
-        x = self.fc_layer(x)
+        x = self.fc_layers(x)
 
         if return_hidden:
             hidden = x
