@@ -4,7 +4,7 @@ Utilities
 https://github.com/gorodnitskiy/yet-another-lightning-hydra-template/blob/main/src/utils/utils.py
 """
 
-
+import datetime
 import hydra
 import logging
 from omegaconf import OmegaConf
@@ -107,3 +107,29 @@ def generate_random_string(n: int = 5) -> str:
     """Generates a random string of given length in lowercase."""
 
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=n))
+
+
+def get_run_name(ckpt_path: str) -> str:
+    """Gets the run name of an existing run or generates a new one using current time."""
+
+    if not ckpt_path: 
+        run_name = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+        logger.info(f"Setting run name to current time {run_name}")
+    else:
+        run_name = ckpt_path.split("/")[-3].split("_")[0]
+        logger.info(f"Extracting run name from the given ckpt path: {run_name}")
+
+    return run_name
+
+
+def get_run_id(ckpt_path: str) -> str:
+    """Gets the run id of an existing run or generates a new unique id."""
+
+    if not ckpt_path: 
+        run_id = generate_random_string(6)
+        logger.info(f"Setting run id to {run_id}")
+    else:
+        run_id = ckpt_path.split("/")[-3].split("_")[-1]
+        logger.info(f"Extracting run id from the given ckpt path: {run_id}")
+
+    return run_id

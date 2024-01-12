@@ -8,7 +8,8 @@ from utils import (
     instantiate_callbacks,
     instantiate_litloggers,
     log_hyperparameters,
-    generate_random_string
+    get_run_name,
+    get_run_id
 )
 from callbacks.wandb_callbacks import get_wandb_logger
 
@@ -19,13 +20,10 @@ from typing import List
 logger = logging.getLogger(__name__)
 
 OmegaConf.register_new_resolver(
-    "randomid", lambda n: generate_random_string(n), use_cache=True
+    "get_run_name", lambda ckpt_path: get_run_name(ckpt_path), use_cache=True
 )
 OmegaConf.register_new_resolver(
-    "get_runname", lambda ckpt_path: ckpt_path.split("/")[-3].split("_")[0]
-)
-OmegaConf.register_new_resolver(
-    "get_runid", lambda ckpt_path: ckpt_path.split("/")[-3].split("_")[-1]
+    "get_run_id", lambda ckpt_path: get_run_id(ckpt_path), use_cache=True
 )
 
 @hydra.main(version_base="1.3", config_path="../configs", config_name="train")
