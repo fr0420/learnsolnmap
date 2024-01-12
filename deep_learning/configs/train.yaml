@@ -4,8 +4,8 @@
 # order of defaults determines the order in which configs override each other
 defaults:
   - _self_
-  - datamodule: fpu
-  - module: solutionmap
+  - datamodule: default
+  - module: solnmap
   - callbacks:
     - model_checkpoint
     - lr_monitor
@@ -18,6 +18,10 @@ defaults:
   - paths: default
   - hydra: default
   
+  # experiment configs allow for version control of specific hyperparameters
+  # e.g. the best hyperparameters for given model and datamodule
+  - experiment: null
+
   # debugging config (enable through command line, e.g. `python train.py debug=default)
   - debug: null
 
@@ -32,18 +36,11 @@ test: True
 task_name: train
 
 # name and id of the run, accessed by loggers and determine output directory path
-run_name: ${now:%Y%m%d}-${now:%H%M%S}
-run_id: ${randomid:6}
-
-# problem name
-problem_name: fpu
+run_name: ${get_run_name:${resume_from_ckpt}}
+run_id: ${get_run_id:${resume_from_ckpt}}
 
 # provide checkpoint path to resume training
-# resume_from_ckpt: /workspace/projects_rui/learnsolnmap/deep_learning/logs/debug/runs/20240110-143201_mc0tm6/checkpoints/last.ckpt
-# run_name: ${get_runname:${resume_from_ckpt}}
-# run_id: ${get_runid:${resume_from_ckpt}}
+resume_from_ckpt: null 
 
 # initialize model with checkpoint  
-# init_model_ckpt:
-
-
+init_model_ckpt: null

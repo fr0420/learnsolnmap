@@ -1,15 +1,5 @@
 # https://pytorch-lightning.readthedocs.io/en/latest/api/pytorch_lightning.callbacks.ModelCheckpoint.html
 
-# Save the model periodically by monitoring a quantity.
-# Look at the above link for more detailed information.
-
-# To avoiding copying of loss and metric names, during hydra initialization
-# there is custom resolver which replaces __loss__ to loss.__class__.__name__
-# and __metric__ to main_metric.__class__.__name__,
-# for example: ${replace:"__metric__/valid"}
-# Use quotes for defining internal value in ${replace:"..."} to avoid
-# grammar problems with hydra config parser.
-
 model_checkpoint:
   _target_: pytorch_lightning.callbacks.ModelCheckpoint
   dirpath: ${paths.output_dir}/checkpoints

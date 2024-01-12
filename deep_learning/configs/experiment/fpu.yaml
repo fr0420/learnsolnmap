@@ -1,0 +1,15 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=fpu
+
+defaults:
+  - override /module/scheduler: none
+
+# module:
+#   problem:
+#     Omega: 50
+
+loggers:
+  wandb:
+    group: fpu

@@ -1,0 +1,27 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=argoncrystal
+
+defaults:
+  # - override /module/scheduler: none
+  - override /module/loss: mse
+
+module:
+  Delta_t: 1e-4
+  problem:
+    _target_: problems.ArgonCrystal
+  network:
+    i2h: 
+      _target_: networks.basics.Scaler
+      scaling_factors: [0.01, 1.]
+    h2h:
+      input_dim: 28
+      output_dim: 28
+    h2i:
+      _target_: networks.basics.Scaler
+      scaling_factors: [100., 1.]
+
+loggers:
+  wandb:
+    group: argoncrystal

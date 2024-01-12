@@ -6,6 +6,6 @@ wandb:
   id: ${run_id}
   project: solutionmap
   log_model: False
-  group: ${problem_name}
+  group: null
   tags: []
   job_type: ""
