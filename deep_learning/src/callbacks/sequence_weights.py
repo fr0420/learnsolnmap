@@ -9,6 +9,9 @@ class FixedSequenceWeights(Callback):
         
     def on_fit_start(self, trainer, pl_module):
         pl_module.set_seq_weights(self.weights)
+    
+    def on_test_start(self, trainer, pl_module):
+        pl_module.set_seq_weights(self.weights)
         
 
 class RandomizedSequenceWeights(Callback):

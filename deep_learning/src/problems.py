@@ -1,4 +1,5 @@
 import torch 
+import numpy as np
 
 
 class SeparableHamiltonianSystem:
@@ -79,6 +80,15 @@ class FPU(SeparableHamiltonianSystem):
         K = 0.5 * torch.sum(p**2, dim=-1)
         return K
     
+
+    def compute_I(self, p, q):
+        dq_stiff = q[:, 1::2] - q[:, ::2]
+        dp_stiff = p[:, 1::2] - p[:, ::2]
+        I = 0.25 * dp_stiff**2 + self.C0 * dq_stiff**2
+        I_tot = torch.sum(I, dim=-1)
+        return torch.column_stack((I, I_tot))
+
+
     def compute_ddx(self, q):
         # assert shape of q 
         dq_stiff = q[:, 1::2] - q[:, ::2]
@@ -96,3 +106,18 @@ class FPU(SeparableHamiltonianSystem):
         dq_stiff = 0.5 * self.Omega * (q[:, 1::2] - q[:, ::2])
         dq_soft = torch.stack((q[:, 0], q[:, 2]-q[:, 1], q[:, 4]-q[:, 3], -q[:, 5]), dim=1)**2
         return torch.cat((p / 2**0.5, dq_stiff, dq_soft), dim=-1)
+
+    def default_initial_states(self):
+        p0 = np.zeros(self.dof)
+        q0 = np.zeros(self.dof)
+        p0[1] = np.sqrt(2)
+        q0[0] = (1. - 1. / self.Omega) / np.sqrt(2.)
+        q0[1] = (1. + 1. / self.Omega) / np.sqrt(2.)
+        
+        # for all states, U = 1 + 3 * \omega^{-2} + 0.5 * \omega^{-4}
+        states = [
+            np.concatenate([p0, q0]),  # K = 1
+            np.concatenate([p0/np.sqrt(2.), q0]),  # K = 0.5
+            np.concatenate([p0*np.sqrt(2.), q0])   # K = 2
+        ]
+        return torch.stack([torch.tensor(s) for s in states])  # tensor dtype is torch.float64

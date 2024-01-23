@@ -4,17 +4,22 @@ Utilities
 https://github.com/gorodnitskiy/yet-another-lightning-hydra-template/blob/main/src/utils/utils.py
 """
 
-import datetime
-import hydra
+import os
 import logging
+import datetime
+import random
+import string
+import hydra
 from omegaconf import OmegaConf
 import pytorch_lightning as pl
 from pytorch_lightning.utilities import rank_zero_only
-import random
-import string
+import pandas as pd
+import torch 
+from callbacks.plot_prediction import plot_energy_profile
 
 from omegaconf import DictConfig
 from typing import List
+from torch import Tensor
 
 
 logger = logging.getLogger(__name__)
@@ -133,3 +138,46 @@ def get_run_id(ckpt_path: str) -> str:
         logger.info(f"Extracting run id from the given ckpt path: {run_id}")
 
     return run_id
+
+
+def save_predictions(predictions: List[List[Tensor]], dirname: str) -> None:
+    """Save predictions returned by `Trainer.predict` method."""
+
+    if not predictions:
+        logger.warning("Predictions is empty! Saving was cancelled ...")
+        return
+
+    path = os.path.join(dirname, "predictions")
+    os.makedirs(path, exist_ok=True)
+
+    n_traj = len(predictions)
+    traj_len = len(predictions[0])
+    dof = len(predictions[0][0]) // 2
+
+    cols = ["p{}".format(i) for i in range(1, dof+1)] + ["q{}".format(i) for i in range(1, dof+1)]
+
+    for i in range(n_traj):
+        data = torch.stack(predictions[i]).numpy()
+        df = pd.DataFrame(data, columns=cols)
+        df.to_csv(os.path.join(path, "traj{}.csv".format(i+1)), index=False)
+    
+    logger.info(f"Saved {n_traj} predicted trajectories (traj_len = {traj_len}) to: {path}")
+
+
+def save_energy_plots(predictions: List[List[Tensor]], model: pl.LightningModule, dirname: str) -> None:
+    """Plot and save energy profiles computed from predictions returned by `Trainer.predict` method."""
+
+    if not predictions:
+        logger.warning("Predictions is empty! Saving was cancelled ...")
+        return
+
+    path = os.path.join(dirname, "predictions")
+    os.makedirs(path, exist_ok=True)
+
+    n_traj = len(predictions)
+
+    for i in range(n_traj):
+        data = torch.stack(predictions[i])
+        plot_energy_profile(data, model, os.path.join(path, "traj{}.pdf".format(i+1)))
+            
+    logger.info(f"Saved {n_traj} energy plots to: {path}")

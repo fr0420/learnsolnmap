@@ -8,9 +8,6 @@ from networks.basics import FrictionBlock, LambdaLayer
 from omegaconf import DictConfig
 
 
-NSTEPS_TO_EVAL = 10
-
-
 class BaseLitModel(pl.LightningModule):
     """
     Base lightning model. 
@@ -109,15 +106,21 @@ class BaseSolutionMap(BaseLitModel):
         pass
 
     def training_step(self, batch, batch_idx):
-        return self._shared_eval_step(batch, batch_idx, "train")
+        return self.model_step(batch, batch_idx, "train")
 
     def validation_step(self, batch, batch_idx):
-        return self._shared_eval_step(batch, batch_idx, "val")
+        return self.model_step(batch, batch_idx, "val")
 
     def test_step(self, batch, batch_idx):
-        return self._shared_eval_step(batch, batch_idx, "test")
+        return self.model_step(batch, batch_idx, "test")
 
-    def _shared_eval_step(self, batch, batch_idx, stage=None):
+    def predict_step(self, batch, batch_idx, dataloader_idx=0, sequence_len=1000):
+        u0 = batch
+        pred_seq = self(u0, sequence_len)
+        pred_seq.insert(0, u0) 
+        return pred_seq
+
+    def model_step(self, batch, batch_idx, stage=None):
         u0 = batch[0]
         true_seq = batch[1:]
         pred_seq = self(u0, len(self.seq_weights))
@@ -159,7 +162,7 @@ class BaseSolutionMap(BaseLitModel):
         for t in range(len(self.seq_weights)):
             ut_pred = pred_seq[t]
             ut_true = true_seq[t]
-            if t < NSTEPS_TO_EVAL or self.seq_weights[t] != 0:
+            if self.seq_weights[t] != 0:
                 losses[t] = self.loss_fn(ut_pred, ut_true)
 
         misfit_loss = losses @ self.seq_weights
@@ -212,11 +215,17 @@ class SolutionMap(BaseSolutionMap):
             self._init_weights()
 
     def forward_1step(self, u, return_hidden=False):
-        u = self.i2h(u)
-        u = self.h2h(u)
-        u = self.h2o(u)
-        # u = u + self.friction(u)
-        return u
+        if return_hidden:
+            u = self.i2h(u)
+            u, hs = self.h2h(u, return_hidden=True)
+            u = self.h2o(u)
+            return u, hs
+        else:
+            u = self.i2h(u)
+            u = self.h2h(u)
+            u = self.h2o(u)
+            # u = u + self.friction(u)
+            return u
     
     def forward(self, u0, sequence_len):
         res = []
