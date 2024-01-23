@@ -3,9 +3,9 @@ from torch import nn
 
 
 class ResidualBlock(nn.Module):
-    """A residual block with [Linear, Batch Norm, Activation] * n, Addition."""
+    """A residual block."""
 
-    def __init__(self, n_features, activation, n_linears=1, scaling_factor=1., use_bn=False):
+    def __init__(self, n_features, activation, n_linears, scaling_factor, use_bn):
         super(ResidualBlock, self).__init__()
         
         self.linears = nn.ModuleList(
@@ -18,6 +18,18 @@ class ResidualBlock(nn.Module):
             self.bn_layers = nn.ModuleList(
                 [nn.BatchNorm1d(n_features) for _ in range(n_linears)]
             )
+
+    def forward(self, x):
+        pass
+    
+
+class PostActivationResidualBlock(ResidualBlock):
+    """A post-activation residual block with [Linear, Batch Norm, Activation] * n, Addition."""
+
+    def __init__(self, n_features, activation, n_linears=1, scaling_factor=1., use_bn=False):
+        super(PostActivationResidualBlock, self).__init__(
+            n_features, activation, n_linears, scaling_factor, use_bn
+        )
 
     def forward(self, x):
         identity = x
@@ -33,21 +45,50 @@ class ResidualBlock(nn.Module):
         return x
 
 
+class PreActivationResidualBlock(ResidualBlock):
+    """A pre-activation residual block with [Batch Norm, Activation, Linear] * n, Addition."""
+
+    def __init__(self, n_features, activation, n_linears=1, scaling_factor=1., use_bn=False):
+        super(PreActivationResidualBlock, self).__init__(
+            n_features, activation, n_linears, scaling_factor, use_bn
+        )
+
+    def forward(self, x):
+        identity = x
+
+        for i in range(len(self.linears)):
+            x = self.activation(x)
+            if self.use_bn:
+                x = self.bn_layers[i](x)
+            x = self.linears[i](x)
+        x = identity + self.scaling_factor * x
+
+        return x
+
+
 class ResNet(nn.Module):
     """Residual network."""
     
     def __init__(self, input_dim, output_dim, hidden_dim, activation, 
                  n_blocks, n_linears_per_block=1, use_bn=False, use_scale=True, 
-                 use_big_skip=False):
+                 use_big_skip=False, block_type="pre-act"):
         super(ResNet, self).__init__()
 
         self.input_layer = nn.Linear(input_dim, hidden_dim)
         self.output_layer = nn.Linear(hidden_dim, output_dim)
         
         scale = 1. / n_blocks if use_scale else 1.
-        self.res_blocks = nn.ModuleList(
-            [ResidualBlock(hidden_dim, activation, n_linears_per_block, scale, use_bn)
-              for _ in range(n_blocks)])
+        self.block_type = block_type
+        if block_type == "pre-act":
+            self.res_blocks = nn.ModuleList(
+                [PreActivationResidualBlock(hidden_dim, activation, n_linears_per_block, scale, use_bn)
+                for _ in range(n_blocks)])
+        elif block_type == "post-act":
+            self.res_blocks = nn.ModuleList(
+                [PostActivationResidualBlock(hidden_dim, activation, n_linears_per_block, scale, use_bn)
+                for _ in range(n_blocks)])
+        else:
+            raise Exception("Invalid block_type. Must be one of ['pre-act', 'post-act].")
         
         self.activation = activation
         self.use_big_skip = use_big_skip
@@ -56,13 +97,17 @@ class ResNet(nn.Module):
         init_x = x
         hs = [] 
         
-        x = self.activation(self.input_layer(x))
+        x = self.input_layer(x)
+        if self.block_type == "post-act":
+            x = self.activation(x)
         hs.append(x)
 
         for res_block in self.res_blocks:
             x = res_block(x)
             hs.append(x) 
-        
+
+        if self.block_type == "pre-act":
+            x = self.activation(x)
         x = self.output_layer(x)
         if self.use_big_skip:
             x = init_x + x

@@ -13,6 +13,7 @@ h2h:
   use_bn: False
   use_scale: True
   use_big_skip: False
+  block_type: pre-act
 
 h2o:
   _target_: torch.nn.Identity
