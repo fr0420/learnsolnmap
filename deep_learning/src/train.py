@@ -118,5 +118,5 @@ def main(cfg: DictConfig) -> pl.Trainer:
     return trainer 
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

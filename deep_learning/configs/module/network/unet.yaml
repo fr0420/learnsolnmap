@@ -8,13 +8,13 @@ h2h:
   out_channels: 2
   activation: 
     _target_: torch.nn.ELU
-  n_blocks: 2 
+  n_blocks: 3 
   k: 5
   kernel_size: 3
-  use_bn: True
+  use_bn: False
   n_conv: 2
   fc_n_nodes: 500
-  fc_n_layers: 2
+  fc_n_layers: 3
 
 h2o:
   _target_: torch.nn.Identity

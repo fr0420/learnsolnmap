@@ -4,11 +4,30 @@
 # python train.py experiment=fpu
 
 defaults:
-  - override /module/scheduler: none
+  - override /module/loss: energynormsquared
+  - override /module/optimizer: adamw
+  - override /module/scheduler: 1cycle
+  - override /module/network: resnet
+  - override /callbacks: 
+    - model_checkpoint
+    - lr_monitor
+    - fixed_seq_weights
+    - metrics_logger
+    - tqdm_progress_bar
+    - plot_energy_profile
 
-# module:
+module:
+  network: 
+    h2h:
+      n_linears_per_block: 3
+      n_blocks: 2
 #   problem:
 #     Omega: 50
+
+callbacks:
+  fixed_seq_weights:
+    _target_: callbacks.sequence_weights.FixedSequenceWeights
+    weights: [1., 1., 0., 0., 0.]
 
 loggers:
   wandb:

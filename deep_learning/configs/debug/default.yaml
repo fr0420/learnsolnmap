@@ -13,7 +13,8 @@ defaults:
     - tqdm_progress_bar
     - model_checkpoint
   - override /module/scheduler: none
-  - override loggers: null
+
+loggers: null
 
 trainer:
   max_epochs: 2

@@ -1,9 +1,12 @@
+import logging
 import os 
 import pandas as pd
 import torch 
-from torch.utils.data import TensorDataset, DataLoader, random_split, Subset 
+from torch.utils.data import TensorDataset, DataLoader, random_split
 import pytorch_lightning as pl
 
+
+logger = logging.getLogger(__name__)
 
 def split_dataset(ds, train_fraction, seed):
     n_full = len(ds)
@@ -41,10 +44,8 @@ class DataModule(pl.LightningDataModule):
         self.ds_train = get_dataset(self.train_dir, self.sequence_len, self.dtype)
         self.ds_test = get_dataset(self.test_dir, self.sequence_len, self.dtype)
     
-        # ds_train = Subset(ds_train, range(len(ds_train)//5))
-
-        print("U_n (n=0,1,...,{0}) train: {1}".format(len(self.ds_train[:])-1, self.ds_train[:][0].shape))
-        print("U_n (n=0,1,...,{0}) test: {1}".format(len(self.ds_test[:])-1, self.ds_test[:][0].shape))
+        logger.info("U_n (n=0,1,...,{0}) train: {1}".format(len(self.ds_train[:])-1, self.ds_train[:][0].shape))
+        logger.info("U_n (n=0,1,...,{0}) test: {1}".format(len(self.ds_test[:])-1, self.ds_test[:][0].shape))
 
     def train_dataloader(self):
         # if self.trainer.current_epoch < 800:
