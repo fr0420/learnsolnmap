@@ -1,7 +1,6 @@
 # @package _global_
 
-# default debugging setup, runs 1 full epoch
-# other debugging configs can inherit from this one
+# default debugging setup, other debugging configs can inherit from this one
 
 # overwrite task name so debugging logs are stored in separate folder
 task_name: debug
@@ -11,26 +10,16 @@ defaults:
   - override /callbacks: 
     - fixed_seq_weights
     - tqdm_progress_bar
-    - model_checkpoint
+    # - model_checkpoint
   - override /module/scheduler: none
+  - override /trainer: gpu
 
 loggers: null
 
+# runs 1 full epoch
 trainer:
-  max_epochs: 2
-  accelerator: gpu
-  devices: 1
-  enable_checkpointing: True
-  # detect_anomaly: true # raise exception if NaN or +/-inf is detected in any tensor
+  max_epochs: 1
+  enable_checkpointing: False
 
-# runs with execution time profiling
-profiler:
-  _target_: pytorch_lightning.profilers.SimpleProfiler
-  # _target_: pytorch_lightning.profilers.AdvancedProfiler
-  # _target_: pytorch_lightning.profilers.PyTorchProfiler
-  dirpath: ${paths.output_dir}
-  filename: perf-logs
-
-paths:
-  root_dir: /workspace/projects_rui/learnsolnmap
-  data_dir: ${paths.root_dir}/data/fpu/omega300/rhmc-H0/css4_dt4e-1_h5e-6_Nchains100_Njumps2000_sigma1e-1/ma5_Dt1e0_h1.5259e-5
+# turn off testing
+test: False

@@ -1,0 +1,25 @@
+# @package _global_
+
+defaults:
+  - default
+  - override /module/network: tiramisu
+
+callbacks:
+  fixed_seq_weights:
+    weights: [1., 0., 0., 0., 0.]
+
+module:
+  network: 
+    h2h:
+      expand_blocks: [5,5,5,5]
+      shrink_blocks: [5,5,5,5] 
+      bottleneck_layers: 5
+      growth_rate: 64
+
+# runs with execution time profiling
+profiler:
+  _target_: pytorch_lightning.profilers.SimpleProfiler
+  # _target_: pytorch_lightning.profilers.AdvancedProfiler
+  # _target_: pytorch_lightning.profilers.PyTorchProfiler
+  dirpath: ${paths.output_dir}
+  filename: perf-logs

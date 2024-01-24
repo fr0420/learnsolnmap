@@ -7,7 +7,8 @@ defaults:
   - override /module/loss: energynormsquared
   - override /module/optimizer: adamw
   - override /module/scheduler: 1cycle
-  - override /module/network: symresnet
+  - override /module/network: tiramisu
+  - override /trainer: ddp
   - override /callbacks: 
     - model_checkpoint
     - lr_monitor
@@ -16,13 +17,15 @@ defaults:
     - tqdm_progress_bar
     - plot_energy_profile
 
-# module:
+module:
 #   optimizer:
 #     lr: 1e-3
-#   network: 
-#     h2h:
-#       n_linears_per_block: 3
-#       n_blocks: 2
+  network: 
+    h2h:
+      expand_blocks: [4,4,4]
+      shrink_blocks: [4,4,4] 
+      bottleneck_layers: 5
+      growth_rate: 64
 #   problem:
 #     Omega: 50
 
