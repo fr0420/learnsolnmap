@@ -154,12 +154,12 @@ def save_predictions(predictions: List[List[Tensor]], dirname: str) -> None:
     traj_len = len(predictions[0])
     dof = len(predictions[0][0]) // 2
 
-    cols = ["p{}".format(i) for i in range(1, dof+1)] + ["q{}".format(i) for i in range(1, dof+1)]
+    cols = [f"p{i}" for i in range(1, dof+1)] + [f"q{i}" for i in range(1, dof+1)]
 
     for i in range(n_traj):
         data = torch.stack(predictions[i]).numpy()
         df = pd.DataFrame(data, columns=cols)
-        df.to_csv(os.path.join(path, "traj{}.csv".format(i+1)), index=False)
+        df.to_csv(os.path.join(path, f"traj{i+1}.csv"), index=False)
     
     logger.info(f"Saved {n_traj} predicted trajectories (traj_len = {traj_len}) to: {path}")
 
@@ -178,6 +178,6 @@ def save_energy_plots(predictions: List[List[Tensor]], model: pl.LightningModule
 
     for i in range(n_traj):
         data = torch.stack(predictions[i])
-        plot_energy_profile(data, model, os.path.join(path, "traj{}.pdf".format(i+1)))
+        plot_energy_profile(data, model, filepath=os.path.join(path, f"traj{i+1}.pdf"))
             
     logger.info(f"Saved {n_traj} energy plots to: {path}")

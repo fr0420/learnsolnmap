@@ -19,22 +19,27 @@ def reshape_predictions(predictions: List[Tensor]) -> List[Tensor]:
     return trajectories
 
 
-def plot_energy_profile(trajectory: Tensor, model: BaseSolutionMap, filepath: str = ""):
+def plot_energy_profile(trajectory: Tensor, model: BaseSolutionMap, filepath: str = "", title: str = ""):
 
     I = model.problem.compute_I(*trajectory.chunk(2, dim=-1)).detach().cpu().numpy()
     H = model.problem.compute_Hamiltonian(*trajectory.chunk(2, dim=-1)).detach().cpu().numpy()
     t = np.arange(len(trajectory)) * model.Delta_t
 
-    fig = plt.figure()
+    fig, ax = plt.subplots()
     
-    plt.plot(t, H, linewidth=2, label="H")
-    plt.plot(t, I[:, 0], linewidth=2, label="I_1")
-    plt.plot(t, I[:, 1], linewidth=2, label="I_2")
-    plt.plot(t, I[:, 2], linewidth=2, label="I_3")
-    plt.plot(t, I[:, 3], linewidth=2, label="I_tot")
-    plt.xlabel("t")
-    plt.ylabel("energy")
-    plt.legend()
+    ax.plot(t, H, linewidth=2, label="H")
+    ax.plot(t, I[:, 0], linewidth=2, label="I_1")
+    ax.plot(t, I[:, 1], linewidth=2, label="I_2")
+    ax.plot(t, I[:, 2], linewidth=2, label="I_3")
+    ax.plot(t, I[:, 3], linewidth=2, label="I_tot")
+    ax.set_xlabel("t")
+    ax.set_ylabel("energy")
+    ax.set_title(title)
+    ax.text(0.95, 0.01, title,
+        verticalalignment="bottom", horizontalalignment="right",
+        transform=ax.transAxes,
+        fontsize=15)  # workaround for showing figure title in wandb panel 
+    ax.legend()
 
     if filepath:
         plt.savefig(filepath, dpi=150)
@@ -65,10 +70,10 @@ class PlotEnergyProfile(pl.Callback):
         predictions = pl_module.predict_step(predict_samples, batch_idx=0, sequence_len=self.nsteps)
         trajectories = reshape_predictions(predictions)
 
-        # log = {"epoch": trainer.current_epoch}
         log = {}
         for i, traj in enumerate(trajectories):
-            log[f"predict/sample_{i+1}"] = plot_energy_profile(traj, pl_module)
+            fig = plot_energy_profile(traj, pl_module, title=f"epoch {trainer.current_epoch}")
+            log[f"predict/sample_{i+1}"] = fig
         trainer.logger.experiment.log(log, commit=False)
 
   
