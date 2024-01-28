@@ -21,18 +21,18 @@ class LambdaLayer(nn.Module):
 
 
 class Scaler(nn.Module):
-    """Scale input (p, q) by constants."""
+    """Scale input (v, x) by constants."""
 
     def __init__(self, scaling_factors=(1., 1.)):
         super(Scaler, self).__init__()
 
         self.scaling_factors = scaling_factors
-        self.factor1 = nn.Parameter(torch.tensor(scaling_factors[0]), requires_grad=False)
-        self.factor2 = nn.Parameter(torch.tensor(scaling_factors[1]), requires_grad=False)
-        
-    def forward(self, x):
-        p, q = x.chunk(2, dim=-1)
-        return torch.cat((self.factor1 * p, self.factor2 * q), dim=-1)
+        self.register_buffer("v_factor", torch.tensor(scaling_factors[0]))
+        self.register_buffer("x_factor", torch.tensor(scaling_factors[1]))
+
+    def forward(self, u):
+        v, x = u.chunk(2, dim=-1)
+        return torch.cat((self.v_factor * v, self.x_factor * x), dim=-1)
 
     def extra_repr(self):
         return f"scaling_factors={self.scaling_factors}"

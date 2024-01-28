@@ -32,10 +32,10 @@ class DenseBlock(nn.Module):
             if self.use_bn:
                 out = self.bn_layers[i](out)
             out = self.activation(out)
-            x = torch.cat([x, out], 1)  # 1 = feature axis
+            x = torch.cat([x, out], -1)  # -1 = feature axis
             new_features.append(out)
         
-        return torch.cat(new_features, 1)
+        return torch.cat(new_features, -1)
 
 
 class TiramisuNet(nn.Module):
@@ -91,17 +91,17 @@ class TiramisuNet(nn.Module):
         skip_connections = [x]
         for dense_block in self.dense_blocks_expand:
             out = dense_block(x)
-            x = torch.cat([x, out], 1)
+            x = torch.cat([x, out], -1)
             skip_connections.append(x)
 
         x = self.bottleneck(x)
         for dense_block in self.dense_blocks_shrink:
             skip = skip_connections.pop()
-            x = torch.cat([x, skip], 1)
+            x = torch.cat([x, skip], -1)
             x = dense_block(x)
 
         skip = skip_connections.pop()
-        x = torch.cat([x, skip], 1)
+        x = torch.cat([x, skip], -1)
         x = self.final_layer(x)
         
         return x

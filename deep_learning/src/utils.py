@@ -154,7 +154,7 @@ def save_predictions(predictions: List[List[Tensor]], dirname: str) -> None:
     traj_len = len(predictions[0])
     dof = len(predictions[0][0]) // 2
 
-    cols = [f"p{i}" for i in range(1, dof+1)] + [f"q{i}" for i in range(1, dof+1)]
+    cols = [f"v{i}" for i in range(1, dof+1)] + [f"x{i}" for i in range(1, dof+1)]
 
     for i in range(n_traj):
         data = torch.stack(predictions[i]).numpy()

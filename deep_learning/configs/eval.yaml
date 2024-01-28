@@ -7,7 +7,7 @@ defaults:
   - callbacks:
     - fixed_seq_weights
     - metrics_logger
-  - trainer: default
+  - trainer: gpu
   - paths: default
   - hydra: default
   - _self_
