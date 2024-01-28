@@ -4,13 +4,38 @@
 # python train.py experiment=argoncrystal
 
 defaults:
-  # - override /module/scheduler: none
-  - override /module/loss: mse
+  - override /module/problem: argoncrystal
+  - override /module/loss: anchoredenergynormsquared
+  - override /module/optimizer: adamw
+  - override /module/scheduler: 1cycle
+  - override /module/network: resnet
+  - override /trainer: gpu
+  - override /callbacks: 
+    - model_checkpoint
+    - lr_monitor
+    - fixed_seq_weights
+    - metrics_logger
+    - tqdm_progress_bar
+    - plot_energy_profile
+
+trainer:
+  gradient_clip_val: 2.0
+  gradient_clip_algorithm: norm
 
 module:
   Delta_t: 1e-4
-  problem:
-    _target_: problems.ArgonCrystal
+  
+  # loss:
+  #   scaler:
+  #     scaling_factors: [0.01, 1.]
+  
+  optimizer:
+    lr: 1e-4
+
+  scheduler:
+    scheduler:
+      pct_start: 0.05
+  
   network:
     i2h: 
       _target_: networks.basics.Scaler
@@ -18,6 +43,8 @@ module:
     h2h:
       input_dim: 28
       output_dim: 28
+      n_blocks: 2
+      n_linears_per_block: 3 
     h2i:
       _target_: networks.basics.Scaler
       scaling_factors: [100., 1.]

@@ -1,6 +1,7 @@
 _target_: models.SolutionMap
 
 defaults:
+  - problem: fpu
   - optimizer: adamw
   - scheduler: 1cycle
   - loss: energynormsquared
@@ -8,10 +9,6 @@ defaults:
   - _self_
 
 Delta_t: 1.0
-
-problem:
-  _target_: problems.FPU
-  Omega: 300
 
 regularization:
   comm_strength: 0.

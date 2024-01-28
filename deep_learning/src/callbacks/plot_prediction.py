@@ -21,17 +21,12 @@ def reshape_predictions(predictions: List[Tensor]) -> List[Tensor]:
 
 def plot_energy_profile(trajectory: Tensor, model: BaseSolutionMap, filepath: str = "", title: str = ""):
 
-    I = model.problem.compute_I(*trajectory.chunk(2, dim=-1)).detach().cpu().numpy()
-    H = model.problem.compute_Hamiltonian(*trajectory.chunk(2, dim=-1)).detach().cpu().numpy()
     t = np.arange(len(trajectory)) * model.Delta_t
-
-    fig, ax = plt.subplots()
+    quantities = model.problem.compute_quantities(*trajectory.chunk(2, dim=-1))
     
-    ax.plot(t, H, linewidth=2, label="H")
-    ax.plot(t, I[:, 0], linewidth=2, label="I_1")
-    ax.plot(t, I[:, 1], linewidth=2, label="I_2")
-    ax.plot(t, I[:, 2], linewidth=2, label="I_3")
-    ax.plot(t, I[:, 3], linewidth=2, label="I_tot")
+    fig, ax = plt.subplots()
+    for key in quantities.keys():
+        ax.plot(t, quantities[key].detach().cpu().numpy(), linewidth=2, label=key)
     ax.set_xlabel("t")
     ax.set_ylabel("energy")
     ax.set_title(title)
