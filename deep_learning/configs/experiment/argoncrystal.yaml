@@ -17,37 +17,30 @@ defaults:
     - metrics_logger
     - tqdm_progress_bar
     - plot_energy_profile
+    - plot_trajectory
 
 trainer:
   gradient_clip_val: 2.0
-  gradient_clip_algorithm: norm
+  gradient_clip_algorithm: value
 
 module:
   Delta_t: 1e-4
   
-  # loss:
-  #   scaler:
-  #     scaling_factors: [0.01, 1.]
-  
+  use_dimensionless_for_loss: True
+
   optimizer:
     lr: 1e-4
 
-  scheduler:
-    scheduler:
-      pct_start: 0.05
+  # scheduler:
+  #   scheduler:
+  #     pct_start: 0.05
   
   network:
-    i2h: 
-      _target_: networks.basics.Scaler
-      scaling_factors: [0.01, 1.]
     h2h:
       input_dim: 28
       output_dim: 28
       n_blocks: 2
-      n_linears_per_block: 3 
-    h2i:
-      _target_: networks.basics.Scaler
-      scaling_factors: [100., 1.]
+      n_linears_per_block: 3
 
 loggers:
   wandb:

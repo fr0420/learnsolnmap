@@ -24,7 +24,7 @@ class MeanEnergyNormSquaredLoss(nn.Module):
         super().__init__()
 
         self.transform: nn.Module = LambdaLayer(
-            lambda u: problem.transform_to_energy_components(*u.chunk(2, dim=-1)), 
+            problem.transform_to_energy_components, 
             "transform_to_energy_components"
         )
         self.reduction: str = reduction
@@ -42,7 +42,7 @@ class AnchoredMeanEnergyNormSquaredLoss(nn.Module):
         super().__init__()
 
         self.transform: nn.Module = LambdaLayer(
-            lambda u: problem.transform_to_energy_components_anchored(*u.chunk(2, dim=-1)), 
+            problem.transform_to_energy_components_anchored, 
             "transform_to_energy_components_anchored"
         )
         self.reduction: str = reduction

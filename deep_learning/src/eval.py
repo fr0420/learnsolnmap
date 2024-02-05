@@ -9,6 +9,7 @@ from utils import (
     instantiate_litloggers,
     get_run_name,
     get_run_id,
+    save_metrics,
     save_predictions,
     save_energy_plots
 )
@@ -76,11 +77,12 @@ def main(cfg: DictConfig) -> pl.Trainer:
     
     # Test the model
     logger.info("Starting testing!")
-    trainer.test(
+    metrics = trainer.test(
         model=model, 
         datamodule=datamodule
     )
-    
+    save_metrics(metrics, dirname=cfg.paths.output_dir)
+
     # Make predictions
     if cfg.get("predict"):
         logger.info("Starting predicting!")

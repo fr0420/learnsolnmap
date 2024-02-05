@@ -20,8 +20,9 @@ class VelocityVerlet(nn.Module):
         """
         super(VelocityVerlet, self).__init__(**kwargs)
 
+        if not callable(A):
+            raise TypeError(f"Argument A should be callable, got {repr(type(A).__name__)}")
         self.A = A
-        
         self.T = T
         self.nsteps = nsteps 
         self.h = self.T / self.nsteps

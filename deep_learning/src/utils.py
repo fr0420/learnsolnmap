@@ -15,7 +15,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities import rank_zero_only
 import pandas as pd
 import torch 
-from callbacks.plot_prediction import plot_energy_profile
+from callbacks.plot_prediction import plot_energy_profile, plot_trajectory_argoncrystal
 
 from omegaconf import DictConfig
 from typing import List
@@ -140,6 +140,16 @@ def get_run_id(ckpt_path: str) -> str:
     return run_id
 
 
+def save_metrics(metrics: dict, dirname: str) -> None:
+    """Save metrics dict returned by `Trainer.test` method."""
+
+    path = os.path.join(dirname, f"test_metrics.csv")
+    df = pd.DataFrame.from_dict(metrics).T
+    df.to_csv(path)
+    
+    logger.info(f"Saved test metrics to: {path}")
+
+
 def save_predictions(predictions: List[List[Tensor]], dirname: str) -> None:
     """Save predictions returned by `Trainer.predict` method."""
 
@@ -179,5 +189,6 @@ def save_energy_plots(predictions: List[List[Tensor]], model: pl.LightningModule
     for i in range(n_traj):
         data = torch.stack(predictions[i])
         plot_energy_profile(data, model, filepath=os.path.join(path, f"traj{i+1}.pdf"))
+        plot_trajectory_argoncrystal(data, filepath=os.path.join(path, f"x_traj{i+1}.pdf"))
             
     logger.info(f"Saved {n_traj} energy plots to: {path}")

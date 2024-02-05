@@ -8,8 +8,10 @@ def _tri_flatten(tri, indicies_func, offset):
     indicies = N * indicies[0] + indicies[1]
     return tri.flatten(-2)[..., indicies]
 
+
 def tril_flatten(tril, offset):
     return _tri_flatten(tril, torch.tril_indices, offset)
+
 
 def triu_flatten(triu, offset):
     return _tri_flatten(triu, torch.triu_indices, offset)
@@ -25,12 +27,14 @@ class SeparableHamiltonianSystem:
         """Generate initial states."""
         pass
 
-    def compute_Hamiltonian(self, v, x):
+    def compute_Hamiltonian(self, u):
         """Compute total energy / Hamiltonian."""
+        v, x = u.chunk(2, dim=-1)
         return self.compute_U(x) + self.compute_K(v)
     
-    def compute_Lagrangian(self, v, x):
+    def compute_Lagrangian(self, u):
         """Compute Lagrangian."""
+        v, x = u.chunk(2, dim=-1)
         return self.compute_K(v) - self.compute_U(x)
     
     def compute_U(self, x):
@@ -45,7 +49,7 @@ class SeparableHamiltonianSystem:
         """Compute second derivative with respect to x (force/mass)."""
         pass
 
-    def transform_to_energy_components(self, v, x):
+    def transform_to_energy_components(self, u):
         """Transform canonical variables to variables whose squared l2-norm = Hamiltonian."""
         pass
 
@@ -58,15 +62,14 @@ class ArgonCrystal(SeparableHamiltonianSystem):
         self.Natoms = 7
         self.d = 2 
         self.MASS = 66.34e-27  # [kg]
-        self.kB = 1.380658e-23
-        self.EPSILON = 119.8*self.kB
-        self.SIGMA = 0.341
+        self.kB = 1.380658e-23  # [J / K]
+        self.EPSILON = 119.8*self.kB  # [J] = [kg * nm^2 / ns^2]
+        self.SIGMA = 0.341  # [nm]
 
-        self.EPSILON_div_kB = 119.8
-        self.MASS_div_kB = self.MASS / self.kB
+        self.EPSILON_div_kB = 119.8  # [K]
+        self.MASS_div_kB = self.MASS / self.kB  # [K * ns^2 / nm^2]
 
-        self.C0 = (self.MASS/2)**0.5
-        self.C1 = 2 * self.EPSILON**0.5 
+        self.C0 = (self.EPSILON/self.MASS)**0.5  # [nm / ns]
 
     def default_initial_states(self):
         """Generate initial states."""
@@ -76,7 +79,7 @@ class ArgonCrystal(SeparableHamiltonianSystem):
             [0.0, 0.0, 0.02, 0.39, 0.34, 0.17, 0.36, -0.21, -0.02, -0.4, -0.35, -0.16, -0.31, 0.21]
         )
         
-        # initial velocities [nm/nsec]
+        # initial velocities [nm/ns]
         v0_1 = torch.tensor(
             [-30.0, -20.0, 50.0, -90.0, -70.0, -60.0, 90.0, 40.0, 80.0, 90.0, -40.0, 100.0, -80.0, -60.0]
         )
@@ -92,7 +95,7 @@ class ArgonCrystal(SeparableHamiltonianSystem):
             torch.cat([v0_2, x0], dim=-1),  # H0 = -1174 kB
             torch.cat([v0_3, x0], dim=-1)   # H0 = -1312 kB
         ]
-        return torch.stack(states)  # tensor dtype is torch.float64
+        return torch.stack(states)
 
     def LJ_potential(self, r):
         """Lennard-Jones potential (divided by kB)."""
@@ -121,30 +124,41 @@ class ArgonCrystal(SeparableHamiltonianSystem):
         x_ddot = 24*self.EPSILON/self.MASS * torch.sum(fac.unsqueeze(-1) * pairwise_diff, dim=-2)
         return x_ddot.flatten(start_dim=-2)
     
-    def transform_to_energy_components(self, v, x):
+    def transform_to_energy_components(self, u_nd):
         """Transform canonical variables to variables whose squared l2-norm = Hamiltonian + constant."""
+        v, x = u_nd.chunk(2, dim=-1)
         x_reshaped = x.view(-1, self.Natoms, self.d)
         pairwise_dist = torch.cdist(x_reshaped, x_reshaped, p=2)  # (-1, Natoms, Natoms)
         d = triu_flatten(pairwise_dist, offset=1) # (-1, Natoms * (Natoms-1) / 2)
-        return torch.cat((self.C0 * v, self.C1 * ((self.SIGMA/d)**6 - 0.5)), dim=-1)
+        return torch.cat((v / 2**0.5, 2 * (1/d)**6 - 1), dim=-1)
     
-    def transform_to_energy_components_anchored(self, v, x):
+    def transform_to_energy_components_anchored(self, u_nd):
         """Transform canonical variables to variables whose squared l2-norm = Hamiltonian + constant."""
+        v, x = u_nd.chunk(2, dim=-1)
         x_reshaped = x.view(-1, self.Natoms, self.d)
         pairwise_dist = torch.cdist(x_reshaped, x_reshaped, p=2)  # (-1, Natoms, Natoms)
         d = triu_flatten(pairwise_dist, offset=1) # (-1, Natoms * (Natoms-1) / 2)
-        res = torch.cat((self.C0 * v, self.C1 * ((self.SIGMA/d)**6 - 0.5)), dim=-1)
-        res = torch.cat((res, self.C1 * x / self.SIGMA), dim=-1)
-        return res
+        return torch.cat((v / 2**0.5, 2 * (1/d)**6, x), dim=-1)
+        # return torch.cat((v / 2**0.5, 1 / d, x), dim=-1)
+        # return torch.cat((v / 2**0.5, d, x), dim=-1)
+    
+    def nondimensionalize(self, u):
+        v, x = u.chunk(2, dim=-1)
+        return torch.cat((v / self.C0, x / self.SIGMA), dim=-1)
+    
+    def dimensionalize(self, u_nd):
+        v_nd, x_nd = u_nd.chunk(2, dim=-1)
+        return torch.cat((v_nd * self.C0, x_nd * self.SIGMA), dim=-1)
     
     def compute_temperature(self, v):
         """Compute temperature."""
         return 0.5 * self.MASS_div_kB * torch.sum(v**2, dim=-1) / self.Natoms
 
-    def compute_quantities(self, v, x):
+    def compute_quantities(self, u):
         """Compute useful quantities accessed by model trainer."""
+        v, x = u.chunk(2, dim=-1)
         return {
-            "H": self.compute_Hamiltonian(v, x),
+            "H": self.compute_Hamiltonian(u),
             "T": self.compute_temperature(v)
         }
 
@@ -200,15 +214,17 @@ class FPU(SeparableHamiltonianSystem):
     
         return ddq.flatten(start_dim=1)
     
-    def transform_to_energy_components(self, p, q):
+    def transform_to_energy_components(self, u):
         """Transform canonical variables to variables whose squared l2-norm = Hamiltonian."""
         # assert shape of p, q
+        p, q = u.chunk(2, dim=-1)
         dq_stiff = 0.5 * self.Omega * (q[:, 1::2] - q[:, ::2])
         dq_soft = torch.stack((q[:, 0], q[:, 2]-q[:, 1], q[:, 4]-q[:, 3], -q[:, 5]), dim=1)**2
         return torch.cat((p / 2**0.5, dq_stiff, dq_soft), dim=-1)
 
-    def compute_I(self, p, q):
+    def compute_I(self, u):
         """Compute energy of stiff springs."""
+        p, q = u.chunk(2, dim=-1)
         dq_stiff = q[:, 1::2] - q[:, ::2]
         dp_stiff = p[:, 1::2] - p[:, ::2]
         I = 0.25 * dp_stiff**2 + self.C0 * dq_stiff**2
@@ -225,30 +241,47 @@ class FPU(SeparableHamiltonianSystem):
         y1 = p[:, 1::2] - p[:, ::2]
         return 0.25 * torch.sum(y1**2, dim=-1)
 
-    def compute_quantities(self, p, q):
+    def compute_quantities(self, u):
         """Compute useful quantities accessed by model trainer."""
-        I = self.compute_I(p, q)
+        I = self.compute_I(u)
         return {
-            "H": self.compute_Hamiltonian(p, q),
+            "H": self.compute_Hamiltonian(u),
             "I_1": I[:, 0],
             "I_2": I[:, 1],
             "I_3": I[:, 2],
             "I_tot": I[:, -1]
         }
-    
+
 
 if __name__ == "__main__":
     
     prob = ArgonCrystal()
     # prob = FPU()
-    u0 = prob.default_initial_states()
-    res = prob.compute_quantities(*u0.chunk(2, dim=-1))
-    print(res)
 
-    v0 = torch.randn(3, 14) * 100
-    x0 = torch.randn(3, 14)
-    u0 = torch.cat([v0, x0], -1)
-    z = prob.transform_to_energy_components_anchored(*u0.chunk(2, dim=-1))
+    print(prob.SIGMA / prob.C0)
+    
+    u0 = prob.default_initial_states()
+    v0, x0 = u0.chunk(2, dim=-1)
+    print("u0:")
+    print(f"mean: {torch.mean(v0)} \t var: {torch.var(v0)}")
+    print(f"mean: {torch.mean(x0)} \t var: {torch.var(x0)}")
+
+    # print(prob.compute_quantities(u0))
+    # print(prob.compute_ddx(x0))
+    # v0 = torch.randn(3, 14) * 100
+    # x0 = torch.randn(3, 14)
+    # print(torch.var(v0))
+    # print(torch.var(x0))
+    # u0 = torch.cat([v0, x0], -1)
+    
+    u0_nd = prob.nondimensionalize(u0)
+    v0, x0 = u0_nd.chunk(2, dim=-1)
+    print("u0 non-dim:")
+    print(f"mean: {torch.mean(v0)} \t var: {torch.var(v0)}")
+    print(f"mean: {torch.mean(x0)} \t var: {torch.var(x0)}")
+
+    z = prob.transform_to_energy_components(u0_nd)
+    print((torch.sum(z**2, -1) - 21) * prob.EPSILON_div_kB)
     print(z.shape)
     print(z)
-    # print(torch.sum(z**2, -1)/prob.kB - 21*prob.EPSILON_div_kB)
+    print(f"mean: {torch.mean(z)} \t var: {torch.var(z)}")

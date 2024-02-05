@@ -5,7 +5,7 @@ from torch import nn
 from solvers import VelocityVerlet
 from networks.basics import FrictionBlock, LambdaLayer
 
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 
 class BaseLitModel(pl.LightningModule):
@@ -38,7 +38,7 @@ class BaseLitModel(pl.LightningModule):
             "kaiming_uniform": nn.init.kaiming_uniform_,
             "kaiming_normal": nn.init.kaiming_normal_,
             }[self.weight_init]
-        
+
         def init_weights(m):
             if isinstance(m, nn.Linear):
                 if m.bias is not None:
@@ -74,6 +74,7 @@ class BaseSolutionMap(BaseLitModel):
             problem: DictConfig,
             loss: DictConfig,
             regularization: DictConfig,
+            use_dimensionless_for_loss: bool = True,
             **kwargs
         ) -> None:
         super(BaseSolutionMap, self).__init__(**kwargs)
@@ -81,15 +82,14 @@ class BaseSolutionMap(BaseLitModel):
         self.Delta_t = Delta_t
 
         self.problem = hydra.utils.instantiate(problem)
-        self.compute_H = LambdaLayer(
-            lambda u: self.problem.compute_Hamiltonian(*u.chunk(2, dim=-1)),
-            "compute_Hamiltonian"
-        )                            
-        self.compute_Lagr = LambdaLayer(
-            lambda u: self.problem.compute_Lagrangian(*u.chunk(2, dim=-1)),
-            "compute_Lagrangian"
-        )
-        self.fine_solver_dt = VelocityVerlet(lambda x: self.problem.compute_ddx(x), Delta_t/128, 8)
+        self.compute_H = LambdaLayer(self.problem.compute_Hamiltonian, "compute_Hamiltonian")                            
+        self.compute_Lagr = LambdaLayer(self.problem.compute_Lagrangian, "compute_Lagrangian")
+        self.fine_solver_dt = VelocityVerlet(self.problem.compute_ddx, Delta_t/128, 8)
+        self.use_dimensionless = True if "nondimensionalize" in dir(self.problem) else False
+        if self.use_dimensionless:
+            self.nondimensionalize = LambdaLayer(self.problem.nondimensionalize, "nondimensionalize")
+            self.dimensionalize = LambdaLayer(self.problem.dimensionalize, "dimensionalize")
+        self.use_dimensionless_for_loss = self.use_dimensionless and use_dimensionless_for_loss
 
         self.loss_fn: nn.Module = hydra.utils.instantiate(loss)
         self.comm_strength = regularization.get("comm_strength", 0.)
@@ -163,6 +163,9 @@ class BaseSolutionMap(BaseLitModel):
             ut_pred = pred_seq[t]
             ut_true = true_seq[t]
             if self.seq_weights[t] != 0:
+                if self.use_dimensionless_for_loss:
+                    ut_pred = self.nondimensionalize(ut_pred)
+                    ut_true = self.nondimensionalize(ut_true)
                 losses[t] = self.loss_fn(ut_pred, ut_true)
 
         misfit_loss = losses @ self.seq_weights
@@ -171,6 +174,9 @@ class BaseSolutionMap(BaseLitModel):
     def calc_comm_loss(self, u0):
         phi_F_u0 = self(self.fine_solver_dt(u0), 1)[0]
         F_phi_u0 = self.fine_solver_dt(self(u0, 1)[0])
+        if self.use_dimensionless_for_loss:
+            phi_F_u0 = self.nondimensionalize(phi_F_u0)
+            F_phi_u0 = self.nondimensionalize(F_phi_u0)
         return self.loss_fn(F_phi_u0, phi_F_u0)
     
     def calc_lagr_loss(self, u0):
@@ -215,26 +221,37 @@ class SolutionMap(BaseSolutionMap):
             self._init_weights()
 
     def forward_1step(self, u, return_hidden=False):
+        if self.use_dimensionless:
+            u = self.nondimensionalize(u)
+
         if return_hidden:
             u = self.i2h(u)
             u, hs = self.h2h(u, return_hidden=True)
             u = self.h2o(u)
+            if self.use_dimensionless:
+                u = self.dimensionalize(u)
             return u, hs
         else:
             u = self.i2h(u)
             u = self.h2h(u)
             u = self.h2o(u)
-            # u = u + self.friction(u)
+            if self.use_dimensionless:
+                u = self.dimensionalize(u)
             return u
     
     def forward(self, u0, sequence_len):
         res = []
 
+        if self.use_dimensionless:
+            u0 = self.nondimensionalize(u0)
+        
         hidden = self.i2h(u0)
         for _ in range(sequence_len):
             hidden = self.h2h(hidden)
             out = self.h2o(hidden)
             # out = out + self.friction(out)
+            if self.use_dimensionless:
+                out = self.dimensionalize(out)
             res.append(out)
 
         return res
@@ -290,3 +307,32 @@ class CorrectionOperator2(BaseSolutionMap):
             u = self.forward_1step(u)
             res.append(u)
         return res
+
+
+if __name__ == "__main__":
+    
+    with hydra.initialize(version_base="1.3", config_path="../configs"):
+        
+        # compose default config and instantiate lightning module 
+        cfg = hydra.compose(config_name="train", 
+                            overrides=["experiment=argoncrystal"])
+        # print(print(OmegaConf.to_yaml(cfg.module)))
+        model = hydra.utils.instantiate(cfg.module, _recursive_=False)
+        print(model)
+
+        # test on default initial states
+        with torch.no_grad():
+            u0 = model.problem.default_initial_states()
+            u0 = u0.to(model.dtype)
+
+            v0, x0 = u0.chunk(2, dim=-1)
+            print("u0:")
+            print(f"mean: {torch.mean(v0)} \t var: {torch.var(v0)}")
+            print(f"mean: {torch.mean(x0)} \t var: {torch.var(x0)}")
+
+            pred_seq = model(u0, sequence_len=5)
+            for i, ut_pred in enumerate(pred_seq):
+                v, x = ut_pred.chunk(2, dim=-1)
+                print(f"predicted u{i+1}:")
+                print(f"mean: {torch.mean(v)} \t var: {torch.var(v)}")
+                print(f"mean: {torch.mean(x)} \t var: {torch.var(x)}")
