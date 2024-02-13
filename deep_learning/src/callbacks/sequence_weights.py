@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from pytorch_lightning.callbacks import Callback
+from bisect import bisect_right
 
 
 class FixedSequenceWeights(Callback):
@@ -11,6 +12,26 @@ class FixedSequenceWeights(Callback):
         pl_module.set_seq_weights(self.weights)
     
     def on_test_start(self, trainer, pl_module):
+        pl_module.set_seq_weights(self.weights)
+
+
+class SequenceLengthScheduler(Callback):
+    def __init__(self, weights, milestones, init_len, end_len):
+        assert 0 < init_len < end_len <= len(weights)
+        assert len(milestones) == end_len - init_len
+
+        self.weights = torch.tensor(weights)
+        self.milestones = sorted(milestones)
+        self.init_len = init_len
+
+    def on_train_epoch_start(self, trainer, pl_module):
+        idx = bisect_right(self.milestones, trainer.current_epoch)
+        pl_module.set_seq_weights(self.weights[:(self.init_len + idx)])
+    
+    def on_validation_epoch_start(self, trainer, pl_module):
+        pl_module.set_seq_weights(self.weights)
+
+    def on_test_epoch_start(self, trainer, pl_module):
         pl_module.set_seq_weights(self.weights)
         
 
