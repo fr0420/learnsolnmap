@@ -5,7 +5,7 @@ from torch import nn
 from solvers import VelocityVerlet
 from networks.basics import FrictionBlock, LambdaLayer
 
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 
 class BaseLitModel(pl.LightningModule):
@@ -168,7 +168,7 @@ class BaseSolutionMap(BaseLitModel):
                     ut_true = self.nondimensionalize(ut_true)
                 losses[t] = self.loss_fn(ut_pred, ut_true)
 
-        misfit_loss = losses @ self.seq_weights
+        misfit_loss = losses @ self.seq_weights / torch.sum(self.seq_weights)
         return misfit_loss, losses
     
     def calc_comm_loss(self, u0):
@@ -310,21 +310,42 @@ class CorrectionOperator2(BaseSolutionMap):
 
 
 if __name__ == "__main__":
-    
+
+    from omegaconf import OmegaConf
+    from utils.benchmark_utils import time_forward, time_backward
+
     with hydra.initialize(version_base="1.3", config_path="../configs"):
         
         # compose default config and instantiate lightning module 
         cfg = hydra.compose(config_name="train", 
-                            overrides=["experiment=argoncrystal"])
+                            overrides=["experiment=fpu", "module/network=resnet", 
+                                    #    "module.network.h2h.n_linears_per_block=1",
+                                    #    "module.network.h2h.n_blocks=3"
+                                       ])
         # print(print(OmegaConf.to_yaml(cfg.module)))
         model = hydra.utils.instantiate(cfg.module, _recursive_=False)
+        
         print(model)
+        print("n_trainable:", sum(p.numel() for p in model.parameters() if p.requires_grad))
+        print("device:", model.device)
+        print("dtype:", model.dtype)
+        
+        # benchmark forward time 
+        compare = time_forward(model, nsteps_list=[1, 5, 10])
+        print(compare)
+        
+        # benchmark backward time 
+        compare = time_backward(model, nsteps_list=[1, 5, 10])
+        print(compare)
 
         # test on default initial states
-        with torch.no_grad():
-            u0 = model.problem.default_initial_states()
-            u0 = u0.to(model.dtype)
+        u0 = model.problem.default_initial_states().to(model.dtype)
+        u0 = u0.to("cuda")
+        model.to("cuda")
 
+        with torch.no_grad():
+
+            # show inputs and outputs scales 
             v0, x0 = u0.chunk(2, dim=-1)
             print("u0:")
             print(f"mean: {torch.mean(v0)} \t var: {torch.var(v0)}")

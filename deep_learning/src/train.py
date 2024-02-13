@@ -4,7 +4,7 @@ from omegaconf import OmegaConf
 import pytorch_lightning as pl
 from pytorch_lightning import seed_everything
 import torch
-from utils import (
+from utils.utils import (
     instantiate_callbacks,
     instantiate_litloggers,
     log_hyperparameters,

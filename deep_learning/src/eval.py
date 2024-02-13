@@ -4,15 +4,14 @@ from omegaconf import OmegaConf
 import pytorch_lightning as pl
 from pytorch_lightning import seed_everything
 import torch
-from utils import (
+from utils.utils import (
     instantiate_callbacks,
     instantiate_litloggers,
     get_run_name,
-    get_run_id,
-    save_metrics,
-    save_predictions,
-    save_energy_plots
+    get_run_id
 )
+from utils.saving_utils import save_metrics, save_predictions, save_energy_plots
+from utils.benchmark_utils import time_forward
 
 from omegaconf import DictConfig
 from typing import List
@@ -82,6 +81,11 @@ def main(cfg: DictConfig) -> pl.Trainer:
         datamodule=datamodule
     )
     save_metrics(metrics, dirname=cfg.paths.output_dir)
+
+    # Benchmark forward time
+    logger.info("Starting benchmarking forward time!")
+    t_forward = time_forward(model)
+    logger.info(t_forward)
 
     # Make predictions
     if cfg.get("predict"):
