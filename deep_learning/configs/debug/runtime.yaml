@@ -2,19 +2,48 @@
 
 defaults:
   - default
+  - override /module/problem: argoncrystal
   - override /module/network: tiramisu
+  - override /module/loss: mse
+  - override /trainer: gpu
+  - override /callbacks: 
+    - fixed_seq_weights
+    # - seq_len_scheduler
+    - tqdm_progress_bar
+
+trainer:
+  max_epochs: 1
+  # gradient_clip_val: 2.0
+  # gradient_clip_algorithm: value
+
+# datamodule:
+#   batch_size: 50
 
 callbacks:
   fixed_seq_weights:
-    weights: [1., 0., 0., 0., 0.]
+    weights: [1., 1., 1., 1., 1.]
+    # weights: [1., 1., 1., 0., 0.]
+  # seq_len_scheduler:
+  #   milestones: [3,6]
+  #   init_len: 3
+  #   end_len: 5
 
 module:
-  network: 
+  use_dimensionless_for_loss: True
+
+  network:
     h2h:
-      expand_blocks: [5,5,5,5]
-      shrink_blocks: [5,5,5,5] 
-      bottleneck_layers: 5
-      growth_rate: 64
+      # input_dim: 28 
+      # output_dim: 28 
+      # hidden_dim: 500
+      # n_hidden_layers: 4
+      # n_blocks: 2
+      # n_linears_per_block: 3 
+      in_features: 28
+      # expand_blocks: [4]
+      # shrink_blocks: [4] 
+      # bottleneck_layers: 4
+      # growth_rate: 128
 
 # runs with execution time profiling
 profiler:

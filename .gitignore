@@ -57,5 +57,6 @@ data/
 **/lightning_logs/
 **/wandb/
 **/res/
+**/out/
 parareal/temp
 notebooks/stability/

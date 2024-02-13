@@ -6,10 +6,10 @@ h2h:
   in_features: 12 
   activation: 
     _target_: torch.nn.ELU
-  expand_blocks: [5,5,5,5,5]
-  shrink_blocks: [5,5,5,5,5] 
+  expand_blocks: [4,4,4]
+  shrink_blocks: [4,4,4] 
   bottleneck_layers: 5
-  growth_rate: 32
+  growth_rate: 64
   use_bn: False
 
 h2o:

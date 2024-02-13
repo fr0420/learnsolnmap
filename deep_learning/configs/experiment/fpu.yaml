@@ -4,6 +4,7 @@
 # python train.py experiment=fpu
 
 defaults:
+  - override /module/problem: fpu
   - override /module/loss: energynormsquared
   - override /module/optimizer: adamw
   - override /module/scheduler: 1cycle
@@ -17,15 +18,15 @@ defaults:
     - tqdm_progress_bar
     - plot_energy_profile
 
-module:
+# module:
 #   optimizer:
 #     lr: 1e-3
-  network: 
-    h2h:
-      expand_blocks: [4,4,4]
-      shrink_blocks: [4,4,4] 
-      bottleneck_layers: 5
-      growth_rate: 64
+  # network: 
+  #   h2h:
+  #     expand_blocks: [4,4,4]
+  #     shrink_blocks: [4,4,4] 
+  #     bottleneck_layers: 5
+  #     growth_rate: 64
 #   problem:
 #     Omega: 50
 
