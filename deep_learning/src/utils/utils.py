@@ -4,7 +4,6 @@ Utilities
 https://github.com/gorodnitskiy/yet-another-lightning-hydra-template/blob/main/src/utils/utils.py
 """
 
-import os
 import logging
 import datetime
 import random
@@ -13,13 +12,9 @@ import hydra
 from omegaconf import OmegaConf
 import pytorch_lightning as pl
 from pytorch_lightning.utilities import rank_zero_only
-import pandas as pd
-import torch 
-from callbacks.plot_prediction import plot_energy_profile, plot_trajectory_argoncrystal
 
 from omegaconf import DictConfig
 from typing import List
-from torch import Tensor
 
 
 logger = logging.getLogger(__name__)
@@ -138,57 +133,3 @@ def get_run_id(ckpt_path: str) -> str:
         logger.info(f"Extracting run id from the given ckpt path: {run_id}")
 
     return run_id
-
-
-def save_metrics(metrics: dict, dirname: str) -> None:
-    """Save metrics dict returned by `Trainer.test` method."""
-
-    path = os.path.join(dirname, f"test_metrics.csv")
-    df = pd.DataFrame.from_dict(metrics).T
-    df.to_csv(path)
-    
-    logger.info(f"Saved test metrics to: {path}")
-
-
-def save_predictions(predictions: List[List[Tensor]], dirname: str) -> None:
-    """Save predictions returned by `Trainer.predict` method."""
-
-    if not predictions:
-        logger.warning("Predictions is empty! Saving was cancelled ...")
-        return
-
-    path = os.path.join(dirname, "predictions")
-    os.makedirs(path, exist_ok=True)
-
-    n_traj = len(predictions)
-    traj_len = len(predictions[0])
-    dof = len(predictions[0][0]) // 2
-
-    cols = [f"v{i}" for i in range(1, dof+1)] + [f"x{i}" for i in range(1, dof+1)]
-
-    for i in range(n_traj):
-        data = torch.stack(predictions[i]).numpy()
-        df = pd.DataFrame(data, columns=cols)
-        df.to_csv(os.path.join(path, f"traj{i+1}.csv"), index=False)
-    
-    logger.info(f"Saved {n_traj} predicted trajectories (traj_len = {traj_len}) to: {path}")
-
-
-def save_energy_plots(predictions: List[List[Tensor]], model: pl.LightningModule, dirname: str) -> None:
-    """Plot and save energy profiles computed from predictions returned by `Trainer.predict` method."""
-
-    if not predictions:
-        logger.warning("Predictions is empty! Saving was cancelled ...")
-        return
-
-    path = os.path.join(dirname, "predictions")
-    os.makedirs(path, exist_ok=True)
-
-    n_traj = len(predictions)
-
-    for i in range(n_traj):
-        data = torch.stack(predictions[i])
-        plot_energy_profile(data, model, filepath=os.path.join(path, f"traj{i+1}.pdf"))
-        plot_trajectory_argoncrystal(data, filepath=os.path.join(path, f"x_traj{i+1}.pdf"))
-            
-    logger.info(f"Saved {n_traj} energy plots to: {path}")
