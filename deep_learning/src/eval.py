@@ -47,7 +47,7 @@ def main(cfg: DictConfig) -> pl.Trainer:
 
     # Load lightning model
     logger.info(f"Loading lightning model <{cfg.module._target_}> from checkpoint {cfg.ckpt_path}")
-    checkpoint = torch.load(cfg.ckpt_path)
+    checkpoint = torch.load(cfg.ckpt_path, map_location="cpu")
     model: pl.LightningModule = hydra.utils.instantiate(cfg.module, **checkpoint["hyper_parameters"], _recursive_=False)
     if cfg.datamodule.dtype == "float64":
         model = model.double()

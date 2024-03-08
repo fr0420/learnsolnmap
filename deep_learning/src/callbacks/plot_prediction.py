@@ -34,6 +34,7 @@ def plot_energy_profile(trajectory: Tensor, model: BaseSolutionMap, filepath: st
         ax.plot(t, quantities[key], linewidth=2, label=key)
     ax.set_xlim(t[0], t[-1])
     ax.set_ylim(min_val - 0.1*val_range, max_val + 0.1*val_range)
+    # ax.set_ylim(0, 1.5)
     ax.set_xlabel("t")
     ax.set_ylabel("energy")
     ax.set_title(title)
