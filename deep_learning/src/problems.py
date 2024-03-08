@@ -69,6 +69,7 @@ class ArgonCrystal(SeparableHamiltonianSystem):
         self.EPSILON_div_kB = 119.8  # [K]
         self.MASS_div_kB = self.MASS / self.kB  # [K * ns^2 / nm^2]
 
+
         self.C0 = (self.EPSILON/self.MASS)**0.5  # [nm / ns]
 
     def default_initial_states(self):
@@ -221,6 +222,14 @@ class FPU(SeparableHamiltonianSystem):
         dq_stiff = 0.5 * self.Omega * (q[:, 1::2] - q[:, ::2])
         dq_soft = torch.stack((q[:, 0], q[:, 2]-q[:, 1], q[:, 4]-q[:, 3], -q[:, 5]), dim=1)**2
         return torch.cat((p / 2**0.5, dq_stiff, dq_soft), dim=-1)
+
+    def transform_to_energy_components_anchored(self, u):
+        """Transform canonical variables to variables whose squared l2-norm = Hamiltonian."""
+        # assert shape of p, q
+        p, q = u.chunk(2, dim=-1)
+        dq_stiff = 0.5 * self.Omega * (q[:, 1::2] - q[:, ::2])
+        dq_soft = torch.stack((q[:, 0], q[:, 2]-q[:, 1], q[:, 4]-q[:, 3], -q[:, 5]), dim=1)**2
+        return torch.cat((p / 2**0.5, dq_stiff, dq_soft, q), dim=-1)
 
     def compute_I(self, u):
         """Compute energy of stiff springs."""
