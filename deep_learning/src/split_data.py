@@ -1,5 +1,5 @@
 """
-Read data, split data into training and test sets, save data 
+Read data, split data into training and test sets, save data.
 """ 
 
 import argparse 
@@ -9,7 +9,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     
     ap = argparse.ArgumentParser()
     ap.add_argument("--data_dir", default=None, help="data directory")

@@ -20,8 +20,8 @@ function ode_solve(
         t0::Float64, 
         H::Float64,
         nsteps::Integer,
-        retfull::Bool,
-        param::Any) where T<:AbstractFloat
+        retfull::Bool;
+        param::Any=nothing) where T<:AbstractFloat
         
     t0 = convert(T, t0)
     H = convert(T, H)
@@ -42,5 +42,5 @@ function ode_solve(
 end
 
     
-Base.round(x::MultiFloat{Float64, 4}, y::RoundingMode) = MultiFloat{Float64, 4}(Base.round(BigFloat(x),y))
-Base.trunc(x::Type{Integer}, y::MultiFloat{Float64, 4}) = Base.trunc(x::Type{Integer}, BigFloat(y))
+Base.round(x::MultiFloat{Float64, N}, y::RoundingMode) where {N} = MultiFloat{Float64, N}(Base.round(BigFloat(x),y))
+Base.trunc(x::Type{Integer}, y::MultiFloat{Float64, N}) where {N} = Base.trunc(x::Type{Integer}, BigFloat(y))
