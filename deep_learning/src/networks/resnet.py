@@ -118,6 +118,39 @@ class ResNet(nn.Module):
             return x
 
 
+class ResBlocks(nn.Module):
+    """A sequence of residual blocks."""
+    
+    def __init__(self, n_features, activation, n_blocks, n_linears_per_block=1, 
+                 use_bn=False, use_scale=True, block_type="pre-act"):
+        super(ResBlocks, self).__init__()
+
+        scale = 1. / n_blocks if use_scale else 1.
+        self.block_type = block_type
+        if block_type == "pre-act":
+            self.res_blocks = nn.ModuleList(
+                [PreActivationResidualBlock(n_features, activation, n_linears_per_block, scale, use_bn)
+                for _ in range(n_blocks)])
+        elif block_type == "post-act":
+            self.res_blocks = nn.ModuleList(
+                [PostActivationResidualBlock(n_features, activation, n_linears_per_block, scale, use_bn)
+                for _ in range(n_blocks)])
+        else:
+            raise Exception("Invalid block_type. Must be one of ['pre-act', 'post-act].")
+                
+    def forward(self, x, return_hidden=False):
+        hs = [] 
+
+        for res_block in self.res_blocks:
+            x = res_block(x)
+            hs.append(x) 
+
+        if return_hidden:
+            return x, hs 
+        else:         
+            return x
+
+
 class Block(nn.Module):
     """A plain block."""
 
