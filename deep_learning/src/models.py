@@ -114,15 +114,15 @@ class BaseSolutionMap(BaseLitModel):
     def test_step(self, batch, batch_idx):
         return self.model_step(batch, batch_idx, "test")
 
-    def predict_step(self, batch, batch_idx, dataloader_idx=0, sequence_len=1000):
+    def predict_step(self, batch, batch_idx, dataloader_idx=0, sequence_len=1001):
         u0 = batch
         pred_seq = self(u0, sequence_len)
-        pred_seq.insert(0, u0) 
+        # pred_seq.insert(0, u0) 
         return pred_seq
 
     def model_step(self, batch, batch_idx, stage=None):
         u0 = batch[0]
-        true_seq = batch[1:]
+        true_seq = batch
         pred_seq = self(u0, len(self.seq_weights))
 
         # loss
@@ -138,9 +138,9 @@ class BaseSolutionMap(BaseLitModel):
 
         metrics = {"loss": loss.detach()}
         for t in range(len(self.seq_weights)):
-            metrics[f"loss_step{t+1}"] = losses[t].detach()
-            metrics[f"traj_err_step{t+1}"] = traj_errors[t].detach()
-            metrics[f"H_err_step{t+1}"] = H_errors[t].detach()
+            metrics[f"loss_step{t}"] = losses[t].detach()
+            metrics[f"traj_err_step{t}"] = traj_errors[t].detach()
+            metrics[f"H_err_step{t}"] = H_errors[t].detach()
         # metrics["loss_comm"] = loss_comm.detach()
         # metrics["loss_lagr"] = loss_lagr.detach()
         batch_size = len(u0)
@@ -172,8 +172,8 @@ class BaseSolutionMap(BaseLitModel):
         return misfit_loss, losses
     
     def calc_comm_loss(self, u0):
-        phi_F_u0 = self(self.fine_solver_dt(u0), 1)[0]
-        F_phi_u0 = self.fine_solver_dt(self(u0, 1)[0])
+        phi_F_u0 = self(self.fine_solver_dt(u0), 2)[1]
+        F_phi_u0 = self.fine_solver_dt(self(u0, 2)[1])
         if self.use_dimensionless_for_loss:
             phi_F_u0 = self.nondimensionalize(phi_F_u0)
             F_phi_u0 = self.nondimensionalize(F_phi_u0)
@@ -183,7 +183,7 @@ class BaseSolutionMap(BaseLitModel):
         lagr_loss = 0.
         u = u0
         for _ in range(4):
-            phi_u = self(u, 1)[0]
+            phi_u = self(u, 2)[1]
             lagr_loss += self.compute_Lagr(phi_u).mean() * self.fine_solver_dt.T
             u = self.fine_solver_dt(u)
         return lagr_loss 
@@ -192,16 +192,29 @@ class BaseSolutionMap(BaseLitModel):
         d = torch.stack([torch.det(torch.autograd.functional.jacobian(self.forward_1step, _u0, create_graph=True)) for _u0 in u0])
         return torch.mean((d-1)**2)
         
-    @staticmethod
-    def calc_traj_errors(pred_seq, true_seq):
-        return [nn.functional.mse_loss(ut_pred, ut_true) for ut_pred, ut_true in zip(pred_seq, true_seq)]
+    def calc_traj_errors(self, pred_seq, true_seq):
+        traj_errors = []
+        for ut_pred, ut_true in zip(pred_seq, true_seq):
+            if self.use_dimensionless_for_loss:
+                ut_pred = self.nondimensionalize(ut_pred)
+                ut_true = self.nondimensionalize(ut_true)
+            # calculate mean l2-norm (NOT mean squared l2-norm) 
+            diff_squares = nn.functional.mse_loss(ut_pred, ut_true, reduction="none")
+            errors = diff_squares.sum(dim=-1).sqrt() / torch.sum(ut_true**2, dim=-1).sqrt()
+            traj_errors.append(errors.mean())
+        return traj_errors
 
     def calc_H_errors(self, pred_seq, true_seq):
         return [nn.functional.l1_loss(self.compute_H(ut_pred), self.compute_H(ut_true)) for ut_pred, ut_true in zip(pred_seq, true_seq)]
 
     def calc_H_errors_fast(self, pred_seq, u0):
+        H_errors = []
         H0 = self.compute_H(u0)
-        return [nn.functional.l1_loss(self.compute_H(ut_pred), H0) for ut_pred in pred_seq]
+        for ut_pred in pred_seq:
+            diffs = nn.functional.l1_loss(self.compute_H(ut_pred), H0, reduction="none")
+            errors = diffs / torch.abs(H0)
+            H_errors.append(errors.mean())
+        return H_errors
 
 
 class SolutionMap(BaseSolutionMap):
@@ -244,9 +257,13 @@ class SolutionMap(BaseSolutionMap):
 
         if self.use_dimensionless:
             u0 = self.nondimensionalize(u0)
-        
         hidden = self.i2h(u0)
-        for _ in range(sequence_len):
+        out = self.h2o(hidden)
+        if self.use_dimensionless:
+            out = self.dimensionalize(out)
+        res.append(out)
+
+        for _ in range(sequence_len-1):
             hidden = self.h2h(hidden)
             out = self.h2o(hidden)
             # out = out + self.friction(out)
@@ -255,6 +272,12 @@ class SolutionMap(BaseSolutionMap):
             res.append(out)
 
         return res
+    
+    def freeze_encoder_decoder(self):
+        for param in self.i2h.parameters():
+            param.requires_grad = False
+        for param in self.h2o.parameters():
+            param.requires_grad = False
 
 
 class CorrectionOperator(BaseSolutionMap):
@@ -312,13 +335,13 @@ class CorrectionOperator2(BaseSolutionMap):
 if __name__ == "__main__":
 
     from omegaconf import OmegaConf
-    from utils.benchmark_utils import time_forward, time_backward
+    from utils.benchmark_utils import time_forward, time_backward, outputs_stats
 
     with hydra.initialize(version_base="1.3", config_path="../configs"):
         
         # compose default config and instantiate lightning module 
         cfg = hydra.compose(config_name="train", 
-                            overrides=["experiment=fpu", "module/network=resnet", 
+                            overrides=["experiment=fpu", "module/network=enc-resblocks-dec", 
                                     #    "module.network.h2h.n_linears_per_block=1",
                                     #    "module.network.h2h.n_blocks=3"
                                        ])
@@ -331,29 +354,13 @@ if __name__ == "__main__":
         print("dtype:", model.dtype)
         
         # benchmark forward time 
-        compare = time_forward(model, nsteps_list=[1, 5, 10])
+        compare = time_forward(model, nsteps_list=[0, 1, 5])
         print(compare)
         
         # benchmark backward time 
-        compare = time_backward(model, nsteps_list=[1, 5, 10])
+        compare = time_backward(model, nsteps_list=[0, 1, 5])
         print(compare)
-
-        # test on default initial states
-        u0 = model.problem.default_initial_states().to(model.dtype)
-        u0 = u0.to("cuda")
-        model.to("cuda")
-
-        with torch.no_grad():
-
-            # show inputs and outputs scales 
-            v0, x0 = u0.chunk(2, dim=-1)
-            print("u0:")
-            print(f"mean: {torch.mean(v0)} \t var: {torch.var(v0)}")
-            print(f"mean: {torch.mean(x0)} \t var: {torch.var(x0)}")
-
-            pred_seq = model(u0, sequence_len=5)
-            for i, ut_pred in enumerate(pred_seq):
-                v, x = ut_pred.chunk(2, dim=-1)
-                print(f"predicted u{i+1}:")
-                print(f"mean: {torch.mean(v)} \t var: {torch.var(v)}")
-                print(f"mean: {torch.mean(x)} \t var: {torch.var(x)}")
+        
+        # benchmark outputs stats 
+        stats = outputs_stats(model, nsteps=5)
+        print(stats)

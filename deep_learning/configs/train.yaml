@@ -44,3 +44,6 @@ resume_from_ckpt: null
 
 # initialize model with checkpoint  
 init_model_ckpt: null
+
+# freeze layers
+freeze_encoder_decoder: False

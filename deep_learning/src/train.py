@@ -56,6 +56,10 @@ def main(cfg: DictConfig) -> pl.Trainer:
         checkpoint = torch.load(cfg.init_model_ckpt)
         model.load_state_dict(checkpoint["state_dict"], strict=False)
 
+    # Freeze part of model 
+    if cfg.get("freeze_encoder_decoder"):
+        model.freeze_encoder_decoder()
+
     # Init callbacks
     logger.info("Instantiating callbacks...")
     callbacks: List[pl.Callback] = instantiate_callbacks(cfg.get("callbacks"))
