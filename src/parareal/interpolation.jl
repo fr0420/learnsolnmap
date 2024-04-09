@@ -11,6 +11,7 @@ struct Linear{T<:AbstractFloat}
     condition_number::T
     use_bias::Bool
     Ur::AbstractArray{T, 2}  # (n+1) x r if use_bias otherwise n x r
+    residual::T
 end
 
 function Linear(
@@ -23,24 +24,7 @@ function Linear(
     xc = zeros(T, size(X, 1))
     yc = zeros(T, size(Y, 1))
 
-    X = use_bias ? vcat(X, ones(T, size(X, 2))') : X
-
-    sol = GenericLinearAlgebra.svd(X)
-    r = sum(sol.S/sol.S[1] .> tol)
-    if r == 0
-        cn = 0.
-        L = Y * sol.V * Diagonal(sol.S) * sol.U'
-        Ur = sol.U 
-    else
-        cn = sol.S[1]/sol.S[r]
-        L = Y * sol.V[:, 1:r] * Diagonal(1 ./ sol.S[1:r]) * sol.U[:, 1:r]'
-        Ur = sol.U[:, 1:r]
-    end
-
-    A = use_bias ? L[:, 1:end-1] : L
-    b = use_bias ? L[:, end] : zero(yc)
-
-    return Linear(A, b, xc, yc, r, cn, use_bias, Ur)
+    return Linear(X, Y, xc, yc, use_bias, tol)
 end
 
 function Linear(
@@ -54,24 +38,23 @@ function Linear(
 
     X = X .- xc
     Y = Y .- yc 
-    X = use_bias ? vcat(X, ones(T, size(X, 2))') : X
+    
+    # if iszero(X)
+    #     throw(DomainError(X, "X must not be null matrix"))
+    # end
 
+    X = use_bias ? vcat(X, ones(T, size(X, 2))') : X  # (n+1) x N if use_bias otherwise n x N
     sol = GenericLinearAlgebra.svd(X)
     r = sum(sol.S/sol.S[1] .> tol)
-    if r == 0
-        cn = 0.
-        L = Y * sol.V * Diagonal(sol.S) * sol.U'
-        Ur = sol.U 
-    else
-        cn = sol.S[1]/sol.S[r]
-        L = Y * sol.V[:, 1:r] * Diagonal(1 ./ sol.S[1:r]) * sol.U[:, 1:r]'
-        Ur = sol.U[:, 1:r]
-    end
+    cn = sol.S[1]/sol.S[r]
+    L = Y * sol.V[:, 1:r] * Diagonal(1 ./ sol.S[1:r]) * sol.U[:, 1:r]'  # m x (n+1) if use_bias otherwise m x n
+    Ur = sol.U[:, 1:r]  # (n+1) x r if use_bias otherwise n x r
+    residual = norm(L * X - Y)^2
 
-    A = use_bias ? L[:, 1:end-1] : L
-    b = use_bias ? L[:, end] : zero(yc)
+    A = use_bias ? L[:, 1:end-1] : L  # m x n
+    b = use_bias ? L[:, end] : zero(yc)  # m x 1
 
-    return Linear(A, b, xc, yc, r, cn, use_bias, Ur)
+    return Linear(A, b, xc, yc, r, cn, use_bias, Ur, residual)
 end
 
 (linear::Linear)(x) = linear.yc + linear.A * (x-linear.xc) + linear.b

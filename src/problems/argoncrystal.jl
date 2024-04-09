@@ -43,6 +43,11 @@ function nondimensionalize(prob::ArgonCrystal, v::AbstractArray{T, 1}, x::Abstra
     return v / prob.C0, x / prob.SIGMA
 end
 
+function nondimensionalize(prob::ArgonCrystal, u::AbstractArray{T, 1}) where T<:AbstractFloat
+    v, x = u[1:14], u[15:28]
+    return [v / prob.C0; x / prob.SIGMA]
+end
+
 function dimensionalize(prob::ArgonCrystal, v_nd::AbstractArray{T, 1}, x_nd::AbstractArray{T, 1}) where T<:AbstractFloat
     return v_nd * prob.C0, x_nd * prob.SIGMA
 end

@@ -191,7 +191,8 @@ function interpolative(
         fine_solve::Function,
         coarse_solve::Function,
         N::Integer,
-        niters::Integer;
+        niters::Integer,
+        transform_func::Function;
         output_dir::String="",
         tol::T=1e-14,
         use_bias::Bool=true,
@@ -215,7 +216,7 @@ function interpolative(
     diagnostics = [Dict(
         "num_singular"=>zeros(Integer, N), 
         "condition_number"=>zeros(T, N),
-        "interp_err"=>zeros(T, N),
+        "residual"=>zeros(T, N),
         "is_exception"=>zeros(Bool, N),
         "range_space_projection_ratio"=>zeros(T, N)) for k in 1:niters]
 
@@ -280,7 +281,7 @@ function interpolative(
     # record num_singular_vals(W_n) and condition_number(W_n) for n = 1, ..., N
     diagnostics[1]["num_singular"][:] .= 1
     diagnostics[1]["condition_number"][:] .= 1.
-    diagnostics[1]["interp_err"][:] .= 0.
+    diagnostics[1]["residual"][:] .= 0.
     diagnostics[1]["is_exception"][:] .= false
     diagnostics[1]["range_space_projection_ratio"][:] .= 0.
 
@@ -318,31 +319,33 @@ function interpolative(
                 else  # TODO: parallelize 
                     X = W[:, :, n]
                     Y = K[:, :, n]
-                end 
-                linear = centering ? Linear(X, Y, W[:, 1, n], K[:, 1, n], use_bias, tol) : Linear(X, Y, use_bias, tol)
+                end
+                X = mapslices(transform_func, X, dims=1)
+                Xc = transform_func(W[:, 1, n])
+                Yc = K[:, 1, n]
+                linear = centering ? Linear(X, Y, Xc, Yc, use_bias, tol) : Linear(X, Y, use_bias, tol)
 
                 # record num_singular_vals(W_n) and condition_number(W_n) 
                 diagnostics[k]["num_singular"][n] = linear.rank
                 diagnostics[k]["condition_number"][n] = linear.condition_number
+                diagnostics[k]["residual"][n] = linear.residual
+                xnew = transform_func([pnew[:, n]; qnew[:, n]])
+                diagnostics[k]["range_space_projection_ratio"][n] = range_space_projection_ratio(xnew, linear)
+                
+                # corr = linear.A * transform_func([pnew[:, n]; qnew[:, n]] - [p[:, n]; q[:, n]])
+                ynew = linear(xnew)
+                corr = linear.A * (xnew - Xc)  # equivalent to linear(xnew) - linear(Xc)
 
                 if linear.rank == 1 
+                    diagnostics[k]["is_exception"][n] = true
+                    pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n]) .- G[n] .+ F[n]
+                elseif norm(ynew) > 2 * maximum(norm.(eachcol(K[:, :, n])))  # TODO: modify condition for exception 
+                    diagnostics[k]["is_exception"][n] = true
                     pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n]) .- G[n] .+ F[n]
                 else
-                    corr = linear.A * ([pnew[:, n]; qnew[:, n]] - [p[:, n]; q[:, n]])
-                    # temp1 = linear([pnew[:, n]; qnew[:, n]]) - linear([p[:, n]; q[:, n]])
-                    # temp2 = linear.A * ([pnew[:, n]; qnew[:, n]] - [p[:, n]; q[:, n]])
-                    # println("norm:", norm(temp1 - temp2))
-                    diagnostics[k]["interp_err"][n] = norm(K[:, 1, n] - linear([p[:, n]; q[:, n]]))
-                    diagnostics[k]["range_space_projection_ratio"][n] = range_space_projection_ratio([pnew[:, n]; qnew[:, n]], linear)
-
-                    if norm(corr) > 2 * maximum(norm.(eachcol(K[:, :, n])))  # TODO: modify condition for exception 
-                        diagnostics[k]["is_exception"][n] = true
-                        pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n]) .- G[n] .+ F[n]
-                    else
-                        pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n]) .- G[n] .+ F[n]
-                        pnew[:, n+1] += corr[1:d]
-                        qnew[:, n+1] += corr[d+1:2*d]
-                    end
+                    pnew[:, n+1], qnew[:, n+1] = coarse_solve(pnew[:, n], qnew[:, n]) .- G[n] .+ F[n]
+                    pnew[:, n+1] += corr[1:d]
+                    qnew[:, n+1] += corr[d+1:2*d]
                 end 
             end
         end

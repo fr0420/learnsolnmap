@@ -121,9 +121,10 @@ function main()
             v0, x0, fine_solve, coarse_solve, config["integration"]["N"], config["integration"]["niters"],
             Lambda, Theta; output_dir=output_dir, alg_kwargs...)
     elseif alg_name == "interpolative"
+        nondim = u -> nondimensionalize(prob, u)
         elapsed_time = @elapsed Parareal.interpolative(
-            v0, x0, fine_solve, coarse_solve, config["integration"]["N"], config["integration"]["niters"];
-            output_dir=output_dir, alg_kwargs...)
+            v0, x0, fine_solve, coarse_solve, config["integration"]["N"], config["integration"]["niters"], 
+            nondim; output_dir=output_dir, alg_kwargs...)
     elseif alg_name == "sequential"
         elapsed_time = @elapsed Parareal.plain(
             v0, x0, fine_solve, fine_solve, config["integration"]["N"], 0;
