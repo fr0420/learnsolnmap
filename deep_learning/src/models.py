@@ -94,6 +94,7 @@ class BaseSolutionMap(BaseLitModel):
         self.loss_fn: nn.Module = hydra.utils.instantiate(loss)
         self.comm_strength = regularization.get("comm_strength", 0.)
         self.lagr_strength = regularization.get("lagr_strength", 0.)
+        self.emb_strength = regularization.get("emb_strength", 0.)
         self.seq_weights = None
 
     def set_seq_weights(self, weights):
@@ -114,19 +115,21 @@ class BaseSolutionMap(BaseLitModel):
     def test_step(self, batch, batch_idx):
         return self.model_step(batch, batch_idx, "test")
 
-    def predict_step(self, batch, batch_idx, dataloader_idx=0, sequence_len=1001):
+    def predict_step(self, batch, batch_idx, dataloader_idx=0, sequence_len=101):
         u0 = batch
-        pred_seq = self(u0, sequence_len)
+        pred_seq, _ = self(u0, sequence_len)
         # pred_seq.insert(0, u0) 
         return pred_seq
 
     def model_step(self, batch, batch_idx, stage=None):
         u0 = batch[0]
         true_seq = batch
-        pred_seq = self(u0, len(self.seq_weights))
+        pred_seq, pred_seq_emb = self(u0, len(self.seq_weights))
 
         # loss
         loss, losses = self.calc_misfit_loss(pred_seq, true_seq)
+        emb_loss, emb_losses = self.calc_emb_loss(pred_seq_emb, true_seq)
+        loss += self.emb_strength * emb_loss
         # loss_comm = self.calc_comm_loss(u0)
         # loss += self.comm_strength * loss_comm
         # loss_lagr = self.calc_lagr_loss(u0)
@@ -141,6 +144,8 @@ class BaseSolutionMap(BaseLitModel):
             metrics[f"loss_step{t}"] = losses[t].detach()
             metrics[f"traj_err_step{t}"] = traj_errors[t].detach()
             metrics[f"H_err_step{t}"] = H_errors[t].detach()
+            if t != 0:
+                metrics[f"emb_loss_step{t}"] = emb_losses[t-1].detach()
         # metrics["loss_comm"] = loss_comm.detach()
         # metrics["loss_lagr"] = loss_lagr.detach()
         batch_size = len(u0)
@@ -171,6 +176,21 @@ class BaseSolutionMap(BaseLitModel):
         misfit_loss = losses @ self.seq_weights / torch.sum(self.seq_weights)
         return misfit_loss, losses
     
+    def calc_emb_loss(self, pred_seq_emb, true_seq):
+        losses = torch.zeros(len(self.seq_weights)-1).to(pred_seq_emb[0])
+
+        for t in range(1, len(self.seq_weights)):
+            emb_pred = pred_seq_emb[t]
+            ut_true = true_seq[t]
+            if self.seq_weights[t] != 0:
+                if self.use_dimensionless:
+                    ut_true = self.nondimensionalize(ut_true)
+                emb_true = self.i2h(ut_true)
+                losses[t-1] = nn.functional.mse_loss(emb_pred, emb_true)
+
+        emb_loss = losses @ self.seq_weights[1:] / torch.sum(self.seq_weights[1:])
+        return emb_loss, losses
+
     def calc_comm_loss(self, u0):
         phi_F_u0 = self(self.fine_solver_dt(u0), 2)[1]
         F_phi_u0 = self.fine_solver_dt(self(u0, 2)[1])
@@ -254,10 +274,12 @@ class SolutionMap(BaseSolutionMap):
     
     def forward(self, u0, sequence_len):
         res = []
+        embs = []
 
         if self.use_dimensionless:
             u0 = self.nondimensionalize(u0)
         hidden = self.i2h(u0)
+        embs.append(hidden)
         out = self.h2o(hidden)
         if self.use_dimensionless:
             out = self.dimensionalize(out)
@@ -265,13 +287,14 @@ class SolutionMap(BaseSolutionMap):
 
         for _ in range(sequence_len-1):
             hidden = self.h2h(hidden)
+            embs.append(hidden)
             out = self.h2o(hidden)
             # out = out + self.friction(out)
             if self.use_dimensionless:
                 out = self.dimensionalize(out)
             res.append(out)
 
-        return res
+        return res, embs
     
     def freeze_encoder_decoder(self):
         for param in self.i2h.parameters():
@@ -341,7 +364,8 @@ if __name__ == "__main__":
         
         # compose default config and instantiate lightning module 
         cfg = hydra.compose(config_name="train", 
-                            overrides=["experiment=fpu", "module/network=enc-resblocks-dec", 
+                            overrides=["experiment=argoncrystal", 
+                                    #    "module/network=piratenet", 
                                     #    "module.network.h2h.n_linears_per_block=1",
                                     #    "module.network.h2h.n_blocks=3"
                                        ])
@@ -358,7 +382,7 @@ if __name__ == "__main__":
         print(compare)
         
         # benchmark backward time 
-        compare = time_backward(model, nsteps_list=[0, 1, 5])
+        compare = time_backward(model, nsteps_list=[1, 5])
         print(compare)
         
         # benchmark outputs stats 
