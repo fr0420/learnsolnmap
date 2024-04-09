@@ -6,7 +6,7 @@ i2h:
   use_bn: False
 
 h2h:
-  _target_: networks.attention.AttentionMLP
+  _target_: networks.pirate.ModifiedMLP
   input_dim: 200 
   output_dim: 200 
   hidden_dim: 500
