@@ -36,6 +36,10 @@ function nondimensionalize(prob::NBody, v::AbstractArray{T, 1}, x::AbstractArray
     return v, x
 end
 
+function nondimensionalize(prob::NBody, u::AbstractArray{T, 1}) where T<:AbstractFloat
+    return u
+end
+
 function dimensionalize(prob::NBody, v::AbstractArray{T, 1}, x::AbstractArray{T, 1}) where T<:AbstractFloat
     return v, x
 end

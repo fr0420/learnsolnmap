@@ -42,28 +42,30 @@ include("./argoncrystal.jl")
 include("./1body.jl")
 include("./2body.jl")
 include("./nbody.jl")
-
+include("./nco.jl")
 
 if ARGS == ["--run"]
     using MultiFloats
-    
+    MultiFloats.use_bigfloat_transcendentals()
+
     # prob = FPU(; omega=300.)
     # prob = ArgonCrystal()
     # prob = OneBodyKepler()
-    prob = TwoBodyKepler(; g12=1e-5)
+    # prob = TwoBodyKepler(; g12=1e-5)
     # prob = NBody()
+    prob = NonlinearCoupledOscillators(; epsilon=0.01)
     println(prob)
 
     v0, x0 = initial_condition(prob, Float64x4)
     println(compute_H(prob, v0, x0))
 
     ddx = zero(x0)
-    compute_ddx!(prob, ddx, v0, x0, nothing, nothing)
+    compute_ddx!(prob, ddx, v0, x0)
     println(ddx)
-    println(compute_ddx(prob, x0))
+    # println(compute_ddx(prob, x0))
     
     v0_ptb, x0_ptb = v0 .+ 1e-5, x0 .+ 1e-5
-    print(compute_H_err(prob, (v0, x0), (v0_ptb, x0_ptb)))
-    print(compute_traj_err(prob, (v0, x0), (v0_ptb, x0_ptb)))
+    println(compute_H_err(prob, (v0, x0), (v0_ptb, x0_ptb)))
+    println(compute_traj_err(prob, (v0, x0), (v0_ptb, x0_ptb)))
     
 end
