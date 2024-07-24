@@ -1,4 +1,4 @@
-_target_: networks.hrn.HamiltonianReversibleNetwork
+_target_: networks.basics.MLP
 layer_sizes: [12, 1000, 1000, 1000, 1000, 12]
 activation:
   _target_: torch.nn.ELU

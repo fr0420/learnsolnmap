@@ -8,33 +8,33 @@ defaults:
   - override /module/loss: mse
   - override /module/optimizer: adamw
   - override /module/scheduler: 1cycle
-  - override /module/network: attention
+  - override /module/network: piratenet
   - override /trainer: gpu
   - override /callbacks: 
     - model_checkpoint
     - lr_monitor
-    - fixed_seq_weights
-    # - seq_len_scheduler
+    # - fixed_seq_weights
+    - seq_len_scheduler
     - metrics_logger
     - tqdm_progress_bar
     - plot_energy_profile
     - plot_trajectory
 
 trainer:
-  max_epochs: 2000
+  max_epochs: 15000
   gradient_clip_val: 2.0
   gradient_clip_algorithm: value
 
 callbacks:
-  fixed_seq_weights:
-    weights: [1., 1., 1., 1., 1.]
-  # seq_len_scheduler:
-    # weights: [1., 1., 1., 1., 1.]
-    # milestones: [50, 100]
-    # init_len: 2
+  # fixed_seq_weights:
+  #   weights: [0., 1., 1., 1., 0., 0.]
+  seq_len_scheduler:
+    weights: [0., 1., 1., 1., 1., 1.]
+    milestones: [1875, 3750, 7500]
+    init_len: 3
 
 module:
-  Delta_t: 1e-4
+  Delta_t: 1e-3
   
   use_dimensionless_for_loss: True
 
@@ -50,8 +50,10 @@ module:
     h2h:
       input_dim: 28
       output_dim: 28
-      # n_blocks: 2
-      # n_linears_per_block: 3
+      hidden_dim: 500
+      # n_hidden_layers: 9
+      n_blocks: 3
+      n_linears_per_block: 3
       # in_features: 28
 
 loggers:

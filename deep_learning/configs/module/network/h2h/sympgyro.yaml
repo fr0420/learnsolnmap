@@ -1,0 +1,11 @@
+_target_: networks.henon.SymplecticGyroceptron
+dof: 2
+NIHenon_hidden_dim: 6
+NIHenon_n_hidden_layers: 1
+NIHenon_n_henon_layers: 8
+Henon_hidden_dim: 8
+Henon_n_hidden_layers: 1
+Henon_n_henon_layers: 10
+activation:
+  _target_: torch.nn.ELU
+epsilon: 0.01

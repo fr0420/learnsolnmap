@@ -1,0 +1,9 @@
+_target_: torch.nn.Sequential
+_args_:
+  - _target_: networks.unet.UNet1D
+    d: 6
+    in_channels: 2
+    out_channels: 2
+    activation: 
+      _target_: torch.nn.ELU
+  - _target_: torch.nn.Identity

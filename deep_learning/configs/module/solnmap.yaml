@@ -5,7 +5,9 @@ defaults:
   - optimizer: adamw
   - scheduler: 1cycle
   - loss: energynormsquared
-  - network: resnet
+  - network/i2h: identity
+  - network/h2h: mlp
+  - network/h2o: identity
   - _self_
 
 Delta_t: 1.0

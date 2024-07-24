@@ -1,0 +1,9 @@
+_target_: networks.resnet.ResBlocks
+n_features: 1000
+activation:
+  _target_: torch.nn.ELU
+n_blocks: 2
+n_linears_per_block: 3
+use_bn: False
+use_scale: True
+block_type: pre-act
