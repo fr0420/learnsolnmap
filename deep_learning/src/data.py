@@ -8,7 +8,8 @@ import pytorch_lightning as pl
 
 logger = logging.getLogger(__name__)
 
-def split_dataset(ds, train_fraction, seed):
+def split_dataset(ds, train_fraction, seed=0):
+    assert 0. <= train_fraction <= 1.
     n_full = len(ds)
     n_train = int(train_fraction*n_full)
     n_test = n_full - n_train 
@@ -30,7 +31,7 @@ def get_dataset(data_dir, sequence_len, dtype):
 
 class DataModule(pl.LightningDataModule):
     def __init__(self, train_dir, test_dir, sequence_len, dtype="float64", 
-                 batch_size=100, num_workers=4, pin_memory=True):
+                 batch_size=100, num_workers=4, pin_memory=True, subsample=None):
         super().__init__()
         self.train_dir = train_dir
         self.test_dir = test_dir 
@@ -39,11 +40,17 @@ class DataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.pin_memory = pin_memory
+        self.subsample = subsample
 
-    def setup(self, stage):
+    def setup(self, stage=None):
         self.ds_train = get_dataset(self.train_dir, self.sequence_len, self.dtype)
         self.ds_test = get_dataset(self.test_dir, self.sequence_len, self.dtype)
-    
+
+        if self.subsample is not None:
+            self.ds_train, _ = split_dataset(self.ds_train, self.subsample)
+        
+        logger.info("Train dataset directory: {0}".format(self.train_dir))
+        logger.info("Test dataset directory: {0}".format(self.test_dir))
         logger.info("U_n (n=0,1,...,{0}) train: {1}".format(len(self.ds_train[:])-1, self.ds_train[:][0].shape))
         logger.info("U_n (n=0,1,...,{0}) test: {1}".format(len(self.ds_test[:])-1, self.ds_test[:][0].shape))
 

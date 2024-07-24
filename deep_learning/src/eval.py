@@ -10,8 +10,9 @@ from utils.utils import (
     get_run_name,
     get_run_id
 )
-from utils.saving_utils import save_metrics, save_predictions, save_energy_plots
+from utils.saving_utils import save_test_metrics, save_test_predictions
 from utils.benchmark_utils import time_forward
+from callbacks.predict_trajectory import predict_and_plot, save_predictions, save_figures
 
 from omegaconf import DictConfig
 from typing import List
@@ -73,39 +74,30 @@ def main(cfg: DictConfig) -> pl.Trainer:
     # Init lightning trainer
     logger.info(f"Instantiating trainer <{cfg.trainer._target_}>")
     trainer: pl.Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=litloggers, profiler=profiler)
-    
+
     # Test the model
-    logger.info("Starting testing!")
+    logger.info("Start testing!")
     metrics = trainer.test(
         model=model, 
         datamodule=datamodule
     )
-    save_metrics(metrics, dirname=cfg.paths.output_dir)
+    save_test_metrics(metrics, dirpath=cfg.paths.output_dir)
+    if cfg.get("save_test_predictions"):
+        predictions = trainer.predict(model=model, datamodule=datamodule)
+        save_test_predictions(predictions, dirpath=cfg.paths.output_dir)
 
     # Benchmark forward time
-    logger.info("Starting benchmarking forward time!")
+    logger.info("Start benchmarking forward time!")
     t_forward = time_forward(model)
     logger.info(t_forward)
 
     # Make predictions
     if cfg.get("predict"):
-        logger.info("Starting predicting!")
         predict_samples = model.problem.default_initial_states()
-        predict_samples = predict_samples.to(model.dtype).to(model.device)
         logger.info(f"Predict samples = {predict_samples}")
-        predictions = trainer.predict(
-            model=model,
-            dataloaders=predict_samples,
-        )
-        save_predictions(
-            predictions=predictions,
-            dirname=cfg.paths.output_dir
-        )
-        save_energy_plots(
-            predictions=predictions,
-            model=model,
-            dirname=cfg.paths.output_dir
-        )
+        predictions, figures = predict_and_plot(predict_samples, model, nsteps=cfg.predict_nsteps)
+        save_predictions(predictions.cpu(), dirpath=cfg.paths.output_dir+"/predictions")
+        save_figures(figures, dirpath=cfg.paths.output_dir+"/predictions")
 
     return trainer 
 

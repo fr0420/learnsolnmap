@@ -1,0 +1,4 @@
+_target_: losses.WeightedMSELoss
+
+weight: [1., 1., 1., 1.,]
+reduction: mean

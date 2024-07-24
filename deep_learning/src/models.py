@@ -64,6 +64,15 @@ class BaseLitModel(pl.LightningModule):
             return {"optimizer": optimizer, "lr_scheduler": lr_scheduler_dict}
         return {"optimizer": optimizer}
     
+    def on_train_epoch_end(self):
+        self.training_step_outputs.clear()
+
+    def on_validation_epoch_end(self):
+        self.validation_step_outputs.clear()
+
+    def on_test_epoch_end(self):
+        self.test_step_outputs.clear()
+
 
 class BaseSolutionMap(BaseLitModel):
     """Base solution map model."""
@@ -84,7 +93,7 @@ class BaseSolutionMap(BaseLitModel):
         self.problem = hydra.utils.instantiate(problem)
         self.compute_H = LambdaLayer(self.problem.compute_Hamiltonian, "compute_Hamiltonian")                            
         self.compute_Lagr = LambdaLayer(self.problem.compute_Lagrangian, "compute_Lagrangian")
-        self.fine_solver_dt = VelocityVerlet(self.problem.compute_ddx, Delta_t/128, 8)
+        self.fine_solver_dt = VelocityVerlet(self.problem.compute_ddx, Delta_t/32, 8)
         self.use_dimensionless = True if "nondimensionalize" in dir(self.problem) else False
         if self.use_dimensionless:
             self.nondimensionalize = LambdaLayer(self.problem.nondimensionalize, "nondimensionalize")
@@ -95,6 +104,7 @@ class BaseSolutionMap(BaseLitModel):
         self.comm_strength = regularization.get("comm_strength", 0.)
         self.lagr_strength = regularization.get("lagr_strength", 0.)
         self.emb_strength = regularization.get("emb_strength", 0.)
+        self.integrator_strength = regularization.get("integrator_strength", 0.)
         self.seq_weights = None
 
     def set_seq_weights(self, weights):
@@ -115,10 +125,12 @@ class BaseSolutionMap(BaseLitModel):
     def test_step(self, batch, batch_idx):
         return self.model_step(batch, batch_idx, "test")
 
-    def predict_step(self, batch, batch_idx, dataloader_idx=0, sequence_len=101):
-        u0 = batch
+    def predict_step(self, batch, batch_idx, dataloader_idx=0, sequence_len=6):
+        if isinstance(batch, list):
+            u0 = batch[0]
+        else:
+            u0 = batch
         pred_seq, _ = self(u0, sequence_len)
-        # pred_seq.insert(0, u0) 
         return pred_seq
 
     def model_step(self, batch, batch_idx, stage=None):
@@ -128,12 +140,14 @@ class BaseSolutionMap(BaseLitModel):
 
         # loss
         loss, losses = self.calc_misfit_loss(pred_seq, true_seq)
-        emb_loss, emb_losses = self.calc_emb_loss(pred_seq_emb, true_seq)
-        loss += self.emb_strength * emb_loss
+        # emb_loss, emb_losses = self.calc_emb_loss(pred_seq_emb, true_seq)
+        # loss += self.emb_strength * emb_loss
         # loss_comm = self.calc_comm_loss(u0)
         # loss += self.comm_strength * loss_comm
         # loss_lagr = self.calc_lagr_loss(u0)
         # loss += self.lagr_strength * loss_lagr
+        loss_integrator = self.calc_integrator_loss(u0)
+        loss += self.integrator_strength * loss_integrator
 
         # metrics
         traj_errors = self.calc_traj_errors(pred_seq, true_seq)
@@ -144,10 +158,11 @@ class BaseSolutionMap(BaseLitModel):
             metrics[f"loss_step{t}"] = losses[t].detach()
             metrics[f"traj_err_step{t}"] = traj_errors[t].detach()
             metrics[f"H_err_step{t}"] = H_errors[t].detach()
-            if t != 0:
-                metrics[f"emb_loss_step{t}"] = emb_losses[t-1].detach()
+            # if t != 0:
+            #     metrics[f"emb_loss_step{t}"] = emb_losses[t-1].detach()
         # metrics["loss_comm"] = loss_comm.detach()
         # metrics["loss_lagr"] = loss_lagr.detach()
+        metrics["loss_integrator"] = loss_integrator.detach()
         batch_size = len(u0)
 
         if stage == "train":
@@ -176,21 +191,40 @@ class BaseSolutionMap(BaseLitModel):
         misfit_loss = losses @ self.seq_weights / torch.sum(self.seq_weights)
         return misfit_loss, losses
     
-    def calc_emb_loss(self, pred_seq_emb, true_seq):
-        losses = torch.zeros(len(self.seq_weights)-1).to(pred_seq_emb[0])
+    # def calc_emb_loss(self, pred_seq_emb, true_seq):
+    #     losses = torch.zeros(len(self.seq_weights)-1).to(pred_seq_emb[0])
 
-        for t in range(1, len(self.seq_weights)):
-            emb_pred = pred_seq_emb[t]
-            ut_true = true_seq[t]
-            if self.seq_weights[t] != 0:
-                if self.use_dimensionless:
-                    ut_true = self.nondimensionalize(ut_true)
-                emb_true = self.i2h(ut_true)
-                losses[t-1] = nn.functional.mse_loss(emb_pred, emb_true)
+    #     for t in range(1, len(self.seq_weights)):
+    #         emb_pred = pred_seq_emb[t]
+    #         ut_true = true_seq[t]
+    #         if self.seq_weights[t] != 0:
+    #             if self.use_dimensionless:
+    #                 ut_true = self.nondimensionalize(ut_true)
+    #             emb_true = self.i2h(ut_true)
+    #             losses[t-1] = nn.functional.mse_loss(emb_pred, emb_true)
 
-        emb_loss = losses @ self.seq_weights[1:] / torch.sum(self.seq_weights[1:])
-        return emb_loss, losses
+    #     emb_loss = losses @ self.seq_weights[1:] / torch.sum(self.seq_weights[1:])
+    #     return emb_loss, losses
 
+    ### TODO: refactor the following functions --> integrator_loss 
+    def calc_integrator_loss(self, u0):
+        phi_F_u0 = self(self.fine_solver_dt(u0), 2)[0][1]
+        phi_u0 = self(u0, 2)[0][1]
+        dt = self.fine_solver_dt.T
+
+        v, x = phi_u0.chunk(2, dim=-1)
+        v_target, x_target = phi_F_u0.chunk(2, dim=-1)
+        v_mid = v + 0.5 * dt * self.problem.compute_ddx(x)
+        x_next = x + v_mid * dt
+        v_next = v_mid + 0.5 * dt * self.problem.compute_ddx(x_target)
+        u_next = torch.cat([v_next, x_next], dim=-1)
+        
+        if self.use_dimensionless_for_loss:
+            u_next = self.nondimensionalize(u_next)
+            phi_F_u0 = self.nondimensionalize(phi_F_u0)
+        
+        return torch.mean((u_next - phi_F_u0) ** 2)
+        
     def calc_comm_loss(self, u0):
         phi_F_u0 = self(self.fine_solver_dt(u0), 2)[1]
         F_phi_u0 = self.fine_solver_dt(self(u0, 2)[1])
@@ -303,6 +337,61 @@ class SolutionMap(BaseSolutionMap):
             param.requires_grad = False
 
 
+class BoostedSolutionMap(BaseSolutionMap):
+    """Boosted solution map."""
+
+    def __init__(self, network: DictConfig, phi: DictConfig, 
+                 forward_type: str, learn_residual: bool, scaling_factor: float, **kwargs):
+        super(BoostedSolutionMap, self).__init__(**kwargs)
+        
+        self.save_hyperparameters(logger=False)
+
+        self.net = hydra.utils.instantiate(network)
+        # self.friction = FrictionBlock()
+
+        if self.weight_init is not None:
+            self._init_weights()
+
+        checkpoint = torch.load(phi.ckpt_path, map_location="cpu")
+        self.phi = hydra.utils.instantiate(phi.module, **checkpoint["hyper_parameters"], _recursive_=False)
+        self.phi.load_state_dict(checkpoint["state_dict"], strict=False)
+        for param in self.phi.parameters():
+            param.requires_grad = False
+
+        self.forward_type = forward_type
+        self.learn_residual = learn_residual
+        if self.learn_residual:
+            self.scaling_factor = nn.Parameter(torch.tensor(scaling_factor), requires_grad=True)
+
+    def forward_1step(self, u):
+        phi_u = self.phi.forward_1step(u)
+        if self.use_dimensionless:
+            phi_u = self.nondimensionalize(phi_u)
+        
+        if self.forward_type == "simple":
+            out = self.net(phi_u)
+        elif self.forward_type == "stacked":
+            if self.use_dimensionless:
+                u = self.nondimensionalize(u)
+            out = self.net(torch.cat((u, phi_u), dim=-1))
+        
+        if self.learn_residual:
+            out = phi_u + self.scaling_factor * out
+        
+        if self.use_dimensionless:
+            out = self.dimensionalize(out)
+
+        return out
+    
+    def forward(self, u0, sequence_len):
+        res = [u0]
+        u = u0 
+        for _ in range(sequence_len-1):
+            u = self.forward_1step(u)
+            res.append(u)
+        return res, None
+
+
 class CorrectionOperator(BaseSolutionMap):
     """Correction operator."""
     
@@ -364,7 +453,7 @@ if __name__ == "__main__":
         
         # compose default config and instantiate lightning module 
         cfg = hydra.compose(config_name="train", 
-                            overrides=["experiment=argoncrystal", 
+                            overrides=["experiment=nco", 
                                     #    "module/network=piratenet", 
                                     #    "module.network.h2h.n_linears_per_block=1",
                                     #    "module.network.h2h.n_blocks=3"
@@ -378,11 +467,11 @@ if __name__ == "__main__":
         print("dtype:", model.dtype)
         
         # benchmark forward time 
-        compare = time_forward(model, nsteps_list=[0, 1, 5])
+        compare = time_forward(model, nsteps_list=[0, 1, 2])
         print(compare)
         
         # benchmark backward time 
-        compare = time_backward(model, nsteps_list=[1, 5])
+        compare = time_backward(model, nsteps_list=[1, 2])
         print(compare)
         
         # benchmark outputs stats 

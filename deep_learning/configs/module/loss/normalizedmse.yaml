@@ -1,0 +1,3 @@
+_target_: losses.NormalizedMSELoss
+
+reduction: mean

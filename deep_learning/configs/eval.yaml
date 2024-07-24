@@ -21,8 +21,12 @@ seed: 42
 # task name, determines output directory path
 task_name: eval
 
-# predict on test samples
+# save predictions on the test set
+save_test_predictions: False 
+
+# predict long-time trajectories on a few test samples 
 predict: True
+predict_nsteps: 1000
 
 # passing checkpoint path is necessary for evaluation
 ckpt_path: ???
