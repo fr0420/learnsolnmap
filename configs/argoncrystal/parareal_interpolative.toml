@@ -1,0 +1,21 @@
+[problem]                           # ode problem
+_name_ = "argoncrystal"
+
+[algorithm]                         # parareal algorithm
+_name_ = "interpolative"  
+tol = 1e-14
+use_bias = true
+centering = true
+k_most_recent = 5
+k_nearest = -1
+
+[integration]
+Delta_t = 1e-3                       # time interval 
+N = 200                              # number of intervals
+Nf = 2048                         # number of fine steps per interval
+Nc = 512                             # number of coarse steps per interval
+niters = 30                         # number of parareal iterations
+fine_method = "KahanLi8"            # fine solver method
+coarse_method = "VelocityVerlet"        # coarse solver method
+# nn_ckpt_path =                    # nn checkpoint path
+use_float64x4 = false               # use Float64x4 for coarse solver (fine solver always uses Float64x4)
