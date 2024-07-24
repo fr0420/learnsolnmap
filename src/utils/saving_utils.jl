@@ -78,8 +78,8 @@ function read_csv(filepath::String, dtype::Type)
     df_P = df[:, 1:dim]
     df_Q = df[:, dim+1:end]    
     
-    P = Matrix(df_P)'
-    Q = Matrix(df_Q)'
+    P = permutedims(Matrix(df_P))
+    Q = permutedims(Matrix(df_Q))
     
     return P, Q
 end

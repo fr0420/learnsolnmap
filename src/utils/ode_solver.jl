@@ -1,5 +1,6 @@
 using DifferentialEquations
 using MultiFloats 
+MultiFloats.use_bigfloat_transcendentals()
 
 
 METHODS = Dict(
@@ -8,6 +9,7 @@ METHODS = Dict(
     "McAte5"=>McAte5(),
     "KahanLi6"=>KahanLi6(),
     "KahanLi8"=>KahanLi8(),
+    "DPRKN4"=>DPRKN4(),
     "DPRKN12"=>DPRKN12(),
 )
 
@@ -25,16 +27,18 @@ function ode_solve(
         
     t0 = convert(T, t0)
     H = convert(T, H)
-        
+    
+    prob = SecondOrderODEProblem(A, v0, x0, (t0, t0+H), param)
     h = H/nsteps 
-    prob = SecondOrderODEProblem(A, v0, x0, (t0, t0+H), param);
+    tstops = t0 .+ (0:nsteps) * h
+    
     if retfull 
-        sol = solve(prob, method, tstops=t0:h:(t0+H), adaptive=false, save_everystep=true);
+        sol = solve(prob, method, tstops=tstops, adaptive=false, save_everystep=true);
         V = hcat([u.x[1] for u in sol.u]...)   
         X = hcat([u.x[2] for u in sol.u]...)
         return V, X
     else 
-        sol = solve(prob, method, tstops=t0:h:(t0+H), adaptive=false, save_everystep=false);
+        sol = solve(prob, method, tstops=tstops, adaptive=false, save_everystep=false);
         v = sol[end].x[1]
         x = sol[end].x[2]
         return v, x

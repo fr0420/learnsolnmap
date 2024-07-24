@@ -21,7 +21,8 @@ function get_problem(config::Dict{String, Any})
         "1body"=>OneBodyKepler, 
         "2body"=>TwoBodyKepler, 
         "argoncrystal"=>ArgonCrystal,
-        "nbody"=>NBody)[name](; kwargs...)
+        "nbody"=>NBody,
+        "nco"=>NonlinearCoupledOscillators)[name](; kwargs...)
 
     return prob
 end
