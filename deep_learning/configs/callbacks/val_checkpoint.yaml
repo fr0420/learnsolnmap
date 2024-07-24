@@ -1,12 +1,12 @@
 # https://pytorch-lightning.readthedocs.io/en/latest/api/pytorch_lightning.callbacks.ModelCheckpoint.html
 
-model_checkpoint:
+val_checkpoint:
   _target_: pytorch_lightning.callbacks.ModelCheckpoint
   dirpath: ${paths.output_dir}/checkpoints
-  filename: "epoch{epoch:02d}-val_loss{val/loss:.3e}" # checkpoint filename
+  filename: "epoch{epoch:05d}-val_loss{val/loss:.3e}" # checkpoint filename
   monitor: val_loss # name of the logged metric which determines when model is improving
   verbose: True # verbosity mode
-  save_last: True # additionally always save an exact copy of the last checkpoint to a file last.ckpt
+  save_last: False # when True, saves a last.ckpt copy whenever a checkpoint file gets saved
   save_top_k: 3 # save k best models (determined by above metric)
   mode: min 
   auto_insert_metric_name: False # when True, the checkpoints filenames will contain the metric name

@@ -1,0 +1,7 @@
+predict_and_plot_trajectory:
+  _target_: callbacks.predict_trajectory.PredictAndPlotTrajectory
+  nsteps: 1000
+  log_freq: 10
+  save_predictions: false
+  save_figures: false
+  output_dir: ${paths.output_dir}/predictions
