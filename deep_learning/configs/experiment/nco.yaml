@@ -1,0 +1,108 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=nco
+
+defaults:
+  - override /module: solnmap
+  - override /module/problem: nco
+  - override /module/loss: mse
+  - override /module/optimizer: adamw
+  - override /module/scheduler: reduceonplateau
+  # - override /module/network: mlp
+  - override /module/network/i2h: identity
+  - override /module/network/h2h: mlp
+  - override /module/network/h2o: identity
+  - override /trainer: gpu
+  - override /callbacks: 
+    - val_checkpoint
+    - latest_checkpoint
+    - lr_monitor
+    - fixed_seq_weights
+    # - seq_len_scheduler
+    - metrics_logger
+    - tqdm_progress_bar
+    - predict_and_plot_trajectory
+    - early_stopping
+
+datamodule:
+  # train_dir: ${paths.data_dir}/train2
+  # test_dir: ${paths.data_dir}/test
+  train_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0
+  test_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version23/Dt=5e0/test
+  batch_size: 500
+  # batch_size: 5
+  subsample: 0.1
+
+trainer:
+  max_epochs: 5000
+  # gradient_clip_val: 2.0
+  # gradient_clip_algorithm: value
+  # log_every_n_steps: 4
+
+module:
+  Delta_t: 5e0
+  
+  use_dimensionless_for_loss: True
+
+  regularization:
+    integrator_strength: 100.
+  optimizer:
+    lr: 1e-3
+  
+  scheduler:
+    scheduler:
+      # steps_per_epoch: 96
+      # steps_per_epoch: 960
+      # steps_per_epoch: 10
+      # pct_start: 0.1
+      factor: 0.8
+      patience: 8
+    
+  # loss:
+  #   weight: [0.01, 1., 0.01, 1.]
+
+  network:
+    # layer_sizes: [24, 1000, 12]
+
+    # i2h:
+    #   layer_sizes: [12, 200, 500]
+    h2h:
+      layer_sizes: [4, 500, 500, 500, 500, 4]
+      # input_dim: 4 
+      # output_dim: 4
+      # n_blocks: 2
+      # n_linears_per_block: 2
+      # dof: 2
+      # hidden_dim: 10
+      # n_hidden_layers: 1
+      # n_henon_layers: 16
+      # NIHenon_hidden_dim: 6
+      # NIHenon_n_hidden_layers: 1
+      # NIHenon_n_henon_layers: 8
+      # Henon_hidden_dim: 8
+      # Henon_n_hidden_layers: 1
+      # Henon_n_henon_layers: 10
+      # activation:
+      #   _target_: torch.nn.Tanh
+
+    # h2o:
+    #   layer_sizes: [500, 200, 12]
+
+
+callbacks:
+  fixed_seq_weights:
+    _target_: callbacks.sequence_weights.FixedSequenceWeights
+    # weights: [0., 1., 1., 1., 1., 1.]
+    weights: [0., 1.,]
+  # seq_len_scheduler:
+    # weights: [1., 1., 1., 1., 1., 1.]
+    # milestones: [10, 20, 50, 100, 200]
+    # init_len: 1
+  predict_and_plot_trajectory:
+    nsteps: 1000
+    save_predictions: true
+
+loggers:
+  wandb:
+    group: nco

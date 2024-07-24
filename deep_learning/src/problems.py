@@ -1,5 +1,10 @@
 import torch 
 import numpy as np
+import matplotlib.pyplot as plt
+
+from typing import List, Dict
+from torch import Tensor
+from matplotlib.figure import Figure
 
 
 def _tri_flatten(tri, indicies_func, offset):
@@ -52,6 +57,38 @@ class SeparableHamiltonianSystem:
     def transform_to_energy_components(self, u):
         """Transform canonical variables to variables whose squared l2-norm = Hamiltonian."""
         pass
+    
+    def compute_quantities(self, u):
+        """Compute useful quantities accessed by model trainer."""
+        pass 
+    
+    def plot_energy_profile(self, trajectory: Tensor) -> Figure:
+        """Plot energy profile."""
+        # trajectory: (traj_len, 2 * dof)
+
+        n_grid = np.arange(len(trajectory))
+        quantities = self.compute_quantities(trajectory)
+        quantities = {key: quantities[key].cpu().numpy() for key in quantities.keys()}
+        init_vals = [vals[0] for _, vals in quantities.items()]
+        min_val = min(init_vals)
+        max_val = max(init_vals)
+        val_range = max_val - min_val
+
+        fig, ax = plt.subplots()
+        for key in quantities.keys():
+            ax.plot(n_grid, quantities[key], lw=2, label=key)
+        ax.set_xlim(n_grid[0], n_grid[-1])
+        ax.set_ylim(min_val - 0.1*val_range, max_val + 0.1*val_range)
+        ax.set_xlabel("n")
+        ax.set_ylabel("energy")
+        ax.legend()
+
+        return fig
+
+    def plot_trajectories(self, trajectories: Tensor) -> Dict[str, Figure]:
+        """Create plots for several trajectories."""
+        # trajectories: (n_traj, traj_len, 2 * dof)
+        pass
 
 
 class ArgonCrystal(SeparableHamiltonianSystem):
@@ -68,8 +105,6 @@ class ArgonCrystal(SeparableHamiltonianSystem):
 
         self.EPSILON_div_kB = 119.8  # [K]
         self.MASS_div_kB = self.MASS / self.kB  # [K * ns^2 / nm^2]
-
-
         self.C0 = (self.EPSILON/self.MASS)**0.5  # [nm / ns]
 
     def default_initial_states(self):
@@ -163,7 +198,33 @@ class ArgonCrystal(SeparableHamiltonianSystem):
             "T": self.compute_temperature(v)
         }
 
+    def plot_trajectory_in_xy_plane(self, trajectory: Tensor):
+        """Plot trajectory in xy-plane."""
+        # trajectory: (traj_len, 2 * dof)
+
+        x = trajectory[:, 14:].cpu().numpy()
+        # c = np.arange(len(trajectory))
+        markers = [".", "^", "s", "o", "*", "+", "h"]
+
+        fig, ax = plt.subplots()
+        for i in range(7):
+            x1 = x[:, i*2]
+            x2 = x[:, i*2+1]
+            ax.scatter(x1, x2, s=2, marker=markers[i])
+        for i in range(7):
+            x1 = x[0, i*2]
+            x2 = x[0, i*2+1]
+            ax.scatter(x1, x2, c="r", s=4, marker=markers[i])
+        ax.set_xlim(-1.2, 1.2)
+        ax.set_ylim(-1.2, 1.2)
+        ax.set_xlabel("x1")
+        ax.set_ylabel("x2")
+        ax.set_aspect("equal")
+        # plt.grid()
+
+        return fig
     
+
 class FPU(SeparableHamiltonianSystem):
     """Fermi-Pasta-Ulam problem."""
 
@@ -262,12 +323,138 @@ class FPU(SeparableHamiltonianSystem):
         }
 
 
+class NonlinearCoupledOscillators(SeparableHamiltonianSystem):
+    """Nonlinear coupled oscillators."""
+
+    def __init__(self, epsilon=0.01):
+        self.dof = 2
+        self.epsilon = epsilon
+
+    def default_initial_states(self):
+        """Generate initial states."""
+        v1_ic = 0.
+        v2_ic = 0.
+        x1_ic = 1.5
+        
+        states = [
+            np.array([v1_ic, v2_ic, x1_ic, 1.5]),       # H = 1.1299632
+            np.array([v1_ic, v2_ic, x1_ic, 0.0]),       # H = 1.125
+            np.array([v1_ic, v2_ic, x1_ic, 0.15]),      # H = 1.12475757
+            np.array([v1_ic, v2_ic, x1_ic, 0.3]),       # H = 1.12345866
+            np.array([v1_ic, v2_ic, x1_ic, 0.4]),       # H = 1.12212885
+            np.array([v1_ic, v2_ic, x1_ic, 1.0]),       # H = 1.11561614
+            np.array([v1_ic, v2_ic, x1_ic, 1.45]),      # H = 1.12738068
+            np.array([v1_ic, v2_ic, x1_ic, 1.55]),      # H = 1.13277722
+            np.array([v1_ic, v2_ic, 1.8,   1.8]),       # H = 1.66191484
+            np.array([1.8,   0.008, 1.8,   1.8]),       # H = 3.28191484
+            np.array([v1_ic, v2_ic, 1.0,   11.45256]),  # H = 1.1299617
+            np.array([v1_ic, v2_ic, -1.45433,   5.]),   # H = 1.1299629
+        ]
+        return torch.stack([torch.tensor(s) for s in states])  # tensor dtype is torch.float64
+    
+    def compute_U(self, x):
+        """Compute potential energy."""
+        x1, x2 = x[..., 0], x[..., 1]
+        U = 0.5 * (x1**2 + x2**2 * self.epsilon) + self.epsilon * x1 * x2 * torch.sin(2*(x1 + x2))
+        return U
+    
+    def compute_K(self, v):
+        """Compute kinetic energy."""
+        v1, v2 = v[..., 0], v[..., 1]
+        K = 0.5 * (v1**2 + v2**2 / self.epsilon)
+        return K
+
+    def compute_ddx(self, x):
+        """Compute second derivative with respect to x (force/mass)."""
+        x1, x2 = x[..., 0], x[..., 1]
+        sine = torch.sin(2*(x1+x2))
+        cosine = torch.cos(2*(x1+x2))
+        ddx1 = - x1 - self.epsilon * x2 * (sine + 2 * x1 * cosine)
+        ddx2 = - self.epsilon**2 * x2 - self.epsilon**2 * x1 * (sine + 2 * x2 * cosine)
+        return torch.stack([ddx1, ddx2], dim=-1)
+    
+    def transform_to_energy_components(self, u_nd):
+        """Transform canonical variables to variables whose squared l2-norm = Hamiltonian."""
+        p, q = u_nd.chunk(2, dim=-1)
+        p1, p2 = p[..., 0], p[..., 1]
+        q1, q2 = q[..., 0], q[..., 1]
+        return torch.stack([p1, p2 * self.epsilon**0.5, q1, q2 * self.epsilon**0.5], dim=-1)
+
+    def compute_quantities(self, u):
+        """Compute useful quantities accessed by model trainer."""
+        v, x = u.chunk(2, dim=-1)
+        return {
+            "H": self.compute_Hamiltonian(u),
+            "U": self.compute_U(x),
+            "K": self.compute_K(v),
+        }
+
+    def nondimensionalize(self, u):
+        """Convert (v1, v2, x1, x2) to (p1, p2, q1, q2) by scaling v2 with 1/epsilon."""
+        u_nd = u.clone()
+        u_nd[..., 1] = u_nd[..., 1] / self.epsilon
+        return u_nd
+    
+    def dimensionalize(self, u_nd):
+        """Convert (p1, p2, q1, q2) to (v1, v2, x1, x2) by scaling p2 with epsilon."""
+        u = u_nd.clone()
+        u[..., 1] = u[..., 1] * self.epsilon
+        return u
+
+    def plot_trajectories(self, trajectories: Tensor) -> Dict[str, Figure]:
+        """Create plots for several trajectories."""
+
+        figures = {}
+
+        for i, traj in enumerate(trajectories):
+            figures[f"traj{i+1}_energy_profile"] = self.plot_energy_profile(traj)
+
+        # Phase space plot for trajectories 1-7
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+        for traj in trajectories[1:8]:
+            ax1.plot(traj[:, 2], traj[:, 0], "-", lw=1)
+            ax2.plot(traj[:, 3], traj[:, 1], "-", lw=1)
+        ax1.set_xlim(-2.2, 2.2)
+        ax1.set_ylim(-2.2, 2.2)
+        ax1.set_xlabel("x1")
+        ax1.set_ylabel("v1")
+        ax1.set_title("Oscillator 1")
+        ax2.set_xlim(-1., 1.6)
+        ax2.set_ylim(-0.015, 0.015)
+        ax2.set_xlabel("x2")
+        ax2.set_ylabel("v2")
+        ax2.set_title("Oscillator 2")
+
+        figures["group1_trajectories"] = fig
+        
+        # Phase space plot for trajectories 0, 10, 11
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+        for traj in trajectories[(0, 10, 11), ...]:
+            ax1.plot(traj[:, 2], traj[:, 0], "-", lw=1)
+            ax2.plot(traj[:, 3], traj[:, 1], "-", lw=1)
+        ax1.set_xlim(-2.2, 2.2)
+        ax1.set_ylim(-2.2, 2.2)
+        ax1.set_xlabel("x1")
+        ax1.set_ylabel("v1")
+        ax1.set_title("Oscillator 1")
+        ax2.set_xlim(-15., 15)
+        ax2.set_ylim(-0.15, 0.15)
+        ax2.set_xlabel("x2")
+        ax2.set_ylabel("v2")
+        ax2.set_title("Oscillator 2")
+
+        figures["group2_trajectories"] = fig
+
+        return figures
+
+
 if __name__ == "__main__":
     
-    prob = ArgonCrystal()
+    # prob = ArgonCrystal()
     # prob = FPU()
+    prob = NonlinearCoupledOscillators()
 
-    print(prob.SIGMA / prob.C0)
+    # print(prob.SIGMA / prob.C0)
     
     u0 = prob.default_initial_states()
     v0, x0 = u0.chunk(2, dim=-1)
@@ -275,22 +462,22 @@ if __name__ == "__main__":
     print(f"mean: {torch.mean(v0)} \t var: {torch.var(v0)}")
     print(f"mean: {torch.mean(x0)} \t var: {torch.var(x0)}")
 
-    # print(prob.compute_quantities(u0))
-    # print(prob.compute_ddx(x0))
+    print(prob.compute_quantities(u0))
+    print(prob.compute_ddx(x0))
     # v0 = torch.randn(3, 14) * 100
     # x0 = torch.randn(3, 14)
     # print(torch.var(v0))
     # print(torch.var(x0))
     # u0 = torch.cat([v0, x0], -1)
     
-    u0_nd = prob.nondimensionalize(u0)
-    v0, x0 = u0_nd.chunk(2, dim=-1)
-    print("u0 non-dim:")
-    print(f"mean: {torch.mean(v0)} \t var: {torch.var(v0)}")
-    print(f"mean: {torch.mean(x0)} \t var: {torch.var(x0)}")
+    # u0_nd = prob.nondimensionalize(u0)
+    # v0, x0 = u0_nd.chunk(2, dim=-1)
+    # print("u0 non-dim:")
+    # print(f"mean: {torch.mean(v0)} \t var: {torch.var(v0)}")
+    # print(f"mean: {torch.mean(x0)} \t var: {torch.var(x0)}")
 
-    z = prob.transform_to_energy_components(u0_nd)
-    print((torch.sum(z**2, -1) - 21) * prob.EPSILON_div_kB)
-    print(z.shape)
-    print(z)
-    print(f"mean: {torch.mean(z)} \t var: {torch.var(z)}")
+    # z = prob.transform_to_energy_components(u0_nd)
+    # print((torch.sum(z**2, -1) - 21) * prob.EPSILON_div_kB)
+    # print(z.shape)
+    # print(z)
+    # print(f"mean: {torch.mean(z)} \t var: {torch.var(z)}")
