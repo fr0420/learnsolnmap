@@ -25,34 +25,50 @@ function save_config(dir, config)
 end
 
 
-"""Save P and Q matrices to a csv file."""
+"""Save V and X matrices to a csv file."""
 function save_csv(
     filepath::String, 
-    P::AbstractArray{T, 2},  # shape = (d, N)
-    Q::AbstractArray{T, 2},  # shape = (d, N)
+    V::AbstractArray{T, 2},  # shape = (d, N)
+    X::AbstractArray{T, 2},  # shape = (d, N)
     ) where T<:AbstractFloat
     
-    df_P = DataFrame(P', "p" .* string.(1:size(P, 1)))
-    df_Q = DataFrame(Q', "q" .* string.(1:size(Q, 1)))     
+    df_V = DataFrame(V', "v" .* string.(1:size(V, 1)))
+    df_X = DataFrame(X', "x" .* string.(1:size(X, 1)))     
     
     mkpath(dirname(filepath))
-    CSV.write(filepath, hcat(df_P, df_Q))
+    CSV.write(filepath, hcat(df_V, df_X))
 end
 
-"""Save (p, q) tuples to a csv file."""
+# """Save V and X matrices and Dt values to a csv file."""
+# function save_csv(
+#     filepath::String, 
+#     V::AbstractArray{T, 2},  # shape = (d, N)
+#     X::AbstractArray{T, 2},  # shape = (d, N)
+#     Dt::AbstractArray{Float64, 1}, # shape = (N,)
+#     ) where T<:AbstractFloat
+    
+#     df_V = DataFrame(V', "v" .* string.(1:size(V, 1)))
+#     df_X = DataFrame(X', "x" .* string.(1:size(X, 1)))     
+#     df_Dt = DataFrame([Dt], ["Dt"])
+    
+#     mkpath(dirname(filepath))
+#     CSV.write(filepath, hcat(df_V, df_X, df_Dt))
+# end
+
+"""Save (v, x) tuples to a csv file."""
 function save_csv(
     filepath::String, 
     tuples::Vector{Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}},
     ) where T<:AbstractFloat
     
-    P = hcat([p for (p, q) in tuples]...)
-    Q = hcat([q for (p, q) in tuples]...)
+    V = hcat([v for (v, x) in tuples]...)
+    X = hcat([x for (v, x) in tuples]...)
 
-    df_P = DataFrame(P', "p" .* string.(1:size(P, 1)))
-    df_Q = DataFrame(Q', "q" .* string.(1:size(Q, 1)))     
+    df_V = DataFrame(V', "v" .* string.(1:size(V, 1)))
+    df_X = DataFrame(X', "x" .* string.(1:size(X, 1)))     
     
     mkpath(dirname(filepath))
-    CSV.write(filepath, hcat(df_P, df_Q))
+    CSV.write(filepath, hcat(df_V, df_X))
 end
 
 """Save a dictionary of vectors to a csv file."""
@@ -64,22 +80,45 @@ function save_csv(
     CSV.write(filepath, DataFrame(dict))
 end
 
-"""Read P and Q matrices from a csv file."""
+"""Read V and X matrices from a csv file."""
 function read_csv(filepath::String, dtype::Type)
     
-    if dtype == Float64x4
+    if dtype <: MultiFloat
         df = CSV.read(filepath, DataFrame, types=BigFloat)
-        df = convert.(Float64x4, df) 
+        df = convert.(dtype, df) 
     else
         df = CSV.read(filepath, DataFrame, types=dtype)
     end
     
-    dim = Int(ncol(df)/2)
-    df_P = df[:, 1:dim]
-    df_Q = df[:, dim+1:end]    
+    if ncol(df) % 2 == 0  # [V, X]
+        dim = Int(ncol(df)/2)
+        df_V = df[:, 1:dim]
+        df_X = df[:, dim+1:end]
+    else  # [V, X, Dt]
+        dim = Int((ncol(df)-1)/2)
+        df_V = df[:, 1:dim]
+        df_X = df[:, dim+1:2*dim]
+        df_Dt = df[:, end]
+    end   
     
-    P = permutedims(Matrix(df_P))
-    Q = permutedims(Matrix(df_Q))
+    V = permutedims(Matrix(df_V))
+    X = permutedims(Matrix(df_X))
     
-    return P, Q
+    return V, X
+end
+
+"""Save Dt values to a csv file."""
+function save_Dt(
+    filepath::String, 
+    Dt::AbstractArray{Float64, 1}, # shape = (N,)
+    )
+    mkpath(dirname(filepath))
+    df_Dt = DataFrame([Dt], ["Dt"])
+    CSV.write(filepath, df_Dt)
+end
+
+"""Read Dt values from a csv file."""
+function read_Dt(filepath::String)
+    df = CSV.read(filepath, DataFrame)
+    return df.Dt
 end
