@@ -1,56 +1,21 @@
 import logging
 import os
-import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
 import pytorch_lightning as pl
 import torch
 
-from typing import List, Dict
+from typing import Dict, Union
 from torch import Tensor
 from matplotlib.figure import Figure
-from models import BaseSolutionMap
+from modules.fixed_dt_solnmap import BaseSolutionMap
+from modules.var_dt_solnmap import BaseVariableDtSolutionMap
 
 
 logger = logging.getLogger(__name__)
 
 
-
-
-
-
-
-# class PlotEnergyProfile(pl.Callback):
-
-#     def __init__(self, nsteps: int = 100, log_freq: int = 2) -> None:
-#         self.nsteps = nsteps
-#         self.log_freq = log_freq
-
-#     def setup(self, trainer: pl.Trainer, pl_module: BaseSolutionMap, stage: str) -> None:
-#         self.predict_samples: Tensor = pl_module.problem.default_initial_states()
-
-#     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: BaseSolutionMap) -> None:
-#         if trainer.sanity_checking:  # optional skip
-#             return
-#         if trainer.current_epoch % self.log_freq == 0:
-#             self.predict_and_plot(trainer, pl_module)
-
-#     def on_test_epoch_end(self, trainer: pl.Trainer, pl_module: BaseSolutionMap) -> None:
-#         self.predict_and_plot(trainer, pl_module)
-    
-#     def predict_and_plot(self, trainer: pl.Trainer, pl_module: BaseSolutionMap) -> None:
-#         predict_samples = self.predict_samples.to(pl_module.dtype).to(pl_module.device)
-#         predictions = pl_module.predict_step(predict_samples, batch_idx=0, sequence_len=self.nsteps)
-#         trajectories = reshape_predictions(predictions)
-
-#         log = {}
-#         for i, traj in enumerate(trajectories):
-#             fig = plot_energy_profile(traj, pl_module, title=f"epoch {trainer.current_epoch}")
-#             log[f"predict/sample_{i+1}"] = fig
-#         trainer.logger.experiment.log(log, commit=False)
-
-
-def predict_and_plot(samples: Tensor, model: BaseSolutionMap, nsteps: int, plot: bool = True):
+def predict_and_plot(samples: Tensor, model: Union[BaseSolutionMap, BaseVariableDtSolutionMap], 
+                     nsteps: int, Dt: float = None, plot: bool = True):
     """Predict and plot trajectories."""
 
     logger.info("Start predicting!")
@@ -61,7 +26,14 @@ def predict_and_plot(samples: Tensor, model: BaseSolutionMap, nsteps: int, plot:
     # Set model to eval mode for prediction
     model.eval()
     with torch.no_grad():
-        predictions = model.predict_step(samples, batch_idx=0, sequence_len=nsteps+1)
+        if isinstance(model, BaseVariableDtSolutionMap):
+            if Dt is None:
+                raise ValueError("Dt must be provided for prediction.")
+            else:
+                Dt = torch.tensor(Dt, dtype=model.dtype).repeat(samples.shape[0], 1).to(model.device)
+            predictions = model.predict_sequence(samples, Dt, sequence_len=nsteps+1)
+        else:
+            predictions = model(samples, sequence_len=nsteps+1)
 
     # Set model back to train mode
     model.train()
@@ -119,28 +91,29 @@ def save_figures(figures: Dict[str, Figure], dirpath: str) -> None:
 class PredictAndPlotTrajectory(pl.Callback):
     """Predict and plot trajectories."""
 
-    def __init__(self, nsteps: int = 100, log_freq: int = 2, save_predictions: bool = False, save_figures: bool = False, 
+    def __init__(self, nsteps: int = 100, Dt: float = 0.1, log_freq: int = 2, save_predictions: bool = False, save_figures: bool = False, 
                  output_dir: str = "") -> None:
         self.nsteps = nsteps
+        self.Dt = Dt
         self.log_freq = log_freq
         self.save_predictions = save_predictions
         self.save_figures = save_figures
         self.output_dir = output_dir
 
-    def setup(self, trainer: pl.Trainer, pl_module: BaseSolutionMap, stage: str) -> None:
+    def setup(self, trainer: pl.Trainer, pl_module: Union[BaseSolutionMap, BaseVariableDtSolutionMap], stage: str) -> None:
         self.predict_samples: Tensor = pl_module.problem.default_initial_states()
 
-    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: BaseSolutionMap) -> None:
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: Union[BaseSolutionMap, BaseVariableDtSolutionMap]) -> None:
         if trainer.sanity_checking:  # optional skip
             return
         if trainer.current_epoch % self.log_freq == 0:
             self.predict_and_plot(trainer, pl_module)
 
-    def on_test_epoch_end(self, trainer: pl.Trainer, pl_module: BaseSolutionMap) -> None:
+    def on_test_epoch_end(self, trainer: pl.Trainer, pl_module: Union[BaseSolutionMap, BaseVariableDtSolutionMap]) -> None:
         self.predict_and_plot(trainer, pl_module)
     
-    def predict_and_plot(self, trainer: pl.Trainer, pl_module: BaseSolutionMap) -> None:
-        predictions, figures = predict_and_plot(self.predict_samples, pl_module, self.nsteps)
+    def predict_and_plot(self, trainer: pl.Trainer, pl_module: Union[BaseSolutionMap, BaseVariableDtSolutionMap]) -> None:
+        predictions, figures = predict_and_plot(self.predict_samples, pl_module, self.nsteps, self.Dt)
         
         # Add epoch number to the figure titles
         for name, fig in figures.items():

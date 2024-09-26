@@ -50,7 +50,7 @@ def main(cfg: DictConfig) -> pl.Trainer:
     logger.info(f"Loading lightning model <{cfg.module._target_}> from checkpoint {cfg.ckpt_path}")
     checkpoint = torch.load(cfg.ckpt_path, map_location="cpu")
     model: pl.LightningModule = hydra.utils.instantiate(cfg.module, **checkpoint["hyper_parameters"], _recursive_=False)
-    if cfg.datamodule.dtype == "float64":
+    if datamodule.get_dtype() == "float64":
         model = model.double()
     model.load_state_dict(checkpoint["state_dict"], strict=False)
     model.eval()
@@ -95,9 +95,19 @@ def main(cfg: DictConfig) -> pl.Trainer:
     if cfg.get("predict"):
         predict_samples = model.problem.default_initial_states()
         logger.info(f"Predict samples = {predict_samples}")
-        predictions, figures = predict_and_plot(predict_samples, model, nsteps=cfg.predict_nsteps)
-        save_predictions(predictions.cpu(), dirpath=cfg.paths.output_dir+"/predictions")
-        save_figures(figures, dirpath=cfg.paths.output_dir+"/predictions")
+        if isinstance(cfg.predict_Dt, float):
+            assert isinstance(cfg.predict_nsteps, int)
+            dirpath = cfg.paths.output_dir+"/predictions"
+            predictions, figures = predict_and_plot(predict_samples, model, nsteps=cfg.predict_nsteps, Dt=cfg.predict_Dt)
+            save_predictions(predictions.cpu(), dirpath=dirpath)
+            save_figures(figures, dirpath=dirpath)
+        else:
+            assert len(cfg.predict_nsteps) == len(cfg.predict_Dt)
+            for nsteps, Dt in zip(cfg.predict_nsteps, cfg.predict_Dt):
+                dirpath = cfg.paths.output_dir + f"/predictions/{nsteps}x{Dt}"
+                predictions, figures = predict_and_plot(predict_samples, model, nsteps=nsteps, Dt=Dt)
+                save_predictions(predictions.cpu(), dirpath=dirpath)
+                save_figures(figures, dirpath=dirpath)
 
     return trainer 
 

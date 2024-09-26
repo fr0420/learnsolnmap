@@ -46,7 +46,7 @@ def main(cfg: DictConfig) -> pl.Trainer:
     # Init lightning model
     logger.info(f"Instantiating lightning model <{cfg.module._target_}>")
     model: pl.LightningModule = hydra.utils.instantiate(cfg.module, _recursive_=False)
-    if cfg.datamodule.dtype == "float64":
+    if datamodule.get_dtype() == "float64":
         model = model.double()
     logger.info(f"{model}")
 
@@ -92,8 +92,8 @@ def main(cfg: DictConfig) -> pl.Trainer:
     
     # Log gradients and model topology with wandb logger 
     wandb_logger = get_wandb_logger(trainer)
-    if wandb_logger:
-        wandb_logger.watch(model, log="all", log_freq=500, log_graph=True)
+    # if wandb_logger:
+    #     wandb_logger.watch(model, log="all", log_freq=500, log_graph=True)
 
     # Train the model
     logger.info("Starting training!")
