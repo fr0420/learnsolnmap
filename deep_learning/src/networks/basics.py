@@ -41,13 +41,17 @@ class Scaler(nn.Module):
 class MLP(nn.Module):
     """Multi-layer perceptron."""
     
-    def __init__(self, layer_sizes, activation, use_bn=False):
+    def __init__(self, layer_sizes, activation, use_bn=False, use_output_bias=True):
         super(MLP, self).__init__()
         
         self.layer_sizes = layer_sizes
         self.layers = nn.ModuleList(
-            [nn.Linear(self.layer_sizes[i], self.layer_sizes[i+1]) for i in range(len(self.layer_sizes)-1)]
+            [nn.Linear(self.layer_sizes[i], self.layer_sizes[i+1]) for i in range(len(self.layer_sizes)-2)]
         )
+        if use_output_bias:
+            self.layers.append(nn.Linear(self.layer_sizes[-2], self.layer_sizes[-1], bias=True))
+        else:
+            self.layers.append(nn.Linear(self.layer_sizes[-2], self.layer_sizes[-1], bias=False))
         self.activation = activation
         self.use_bn = use_bn
         if self.use_bn:
