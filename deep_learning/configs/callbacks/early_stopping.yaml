@@ -3,6 +3,6 @@ early_stopping:
     monitor: train/loss
     min_delta: 0.0
     patience: 20
-    verbose: false
+    verbose: true
     check_on_train_epoch_end: true
     log_rank_zero_only: false

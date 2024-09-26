@@ -1,0 +1,174 @@
+# @package _global_
+
+# to execute this experiment run:
+# python eval.py experiment_eval=nco_var_dt
+
+defaults:
+  - override /datamodule: default
+  - override /trainer: gpu
+  - override /callbacks: 
+    - metrics_logger
+    - hparams_updater
+
+trainer:
+  inference_mode: false  # to avoid the model derivatives to be zeroed out
+
+module:
+  _target_: modules.var_dt_solnmap.VariableDtSolutionMap
+
+datamodule:
+  train:
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e1_min_Dt=-1e1/train
+    sequence_len: 2
+    downsample_factor: 0.2
+    Dt_range: [-4.0, 4.0]
+    exclude: false
+  test:
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e1_min_Dt=-1e1/test
+    sequence_len: 2
+    downsample_factor: 1.
+    Dt_range: [-10., 10.]
+    exclude: false
+  batch_size: 1000
+
+save_test_predictions: false 
+
+predict: false
+predict_nsteps: [2500, 2500, 1000, 1000, 1000, 1250, 2000, 2500, 5000, 10000, 20000]
+predict_Dt: [4.1, 4.2, 10.2, 11., 10., 8.0, 5.0, 4.0, 2.0, 1.0, 0.5]
+
+callbacks:
+  hparams_updater:
+
+    loss_hparams:
+      misfit: 
+        strength: 1.0
+      additive_vv:
+        integrator:
+          method: VelocityVerlet
+          stepsize: 0.1
+          nsteps: 1
+        strength: 1.0
+        batch_size: 500
+        h_min: -10.
+        h_max: 10.
+      # additive:
+      #   strength: 1.0
+      #   batch_size: 500
+      #   s_min: -5.
+      #   s_max: 5.
+      #   t_min: -5.
+      #   t_max: 5.
+      # commutative:
+      #   strength: 1.0
+      #   batch_size: 500
+      #   s_min: -5.
+      #   s_max: 5.
+      #   t_min: -5.
+      #   t_max: 5.
+      # commutative_vv:
+      #   strength: 1.0
+      #   batch_size: 500
+      #   s_min: -5.
+      #   s_max: 5. 
+      #   t_min: 0.1
+      #   t_max: 0.1
+      # dyadic:
+      #   strength: 1.0
+      #   batch_size: 500
+      #   h_min: -2.
+      #   h_max: 2.
+
+    
+    # metric_hparams:
+    #   dynamics:    
+    #   commutative: 
+    #     s_min: -4.
+    #     s_max: 4. 
+    #     t_min: -4.
+    #     t_max: 4.
+    #   commutative_vv: 
+    #     s_min: -4.
+    #     s_max: 4. 
+    #     t_min: 0.1
+    #     t_max: 0.1
+    #   additive: 
+    #     s_min: -2.
+    #     s_max: 2. 
+    #     t_min: -2.
+    #     t_max: 2.
+    #   additive_vv:
+    #     s_min: -4.
+    #     s_max: 4.
+    #     t_min: 0.1
+    #     t_max: 0.1
+    #   dyadic:
+    #     h_min: -2.
+    #     h_max: 2.
+    #   reversibility:
+    #     h_min: -4.
+    #     h_max: 4.
+
+    # metric_hparams:
+    #   dynamics:    
+    #   commutative: 
+    #     s_min: -5.
+    #     s_max: 5. 
+    #     t_min: -5.
+    #     t_max: 5.
+    #   commutative_vv: 
+    #     s_min: -5.
+    #     s_max: 5. 
+    #     t_min: 0.1
+    #     t_max: 0.1
+    #   additive: 
+    #     s_min: -2.5
+    #     s_max: 2.5 
+    #     t_min: -2.5
+    #     t_max: 2.5
+    #   additive_vv:
+    #     s_min: -5.
+    #     s_max: 5.
+    #     t_min: 0.1
+    #     t_max: 0.1
+    #   dyadic:
+    #     h_min: -2.5
+    #     h_max: 2.5
+    #   reversibility:
+    #     h_min: -5.
+    #     h_max: 5.
+
+    metric_hparams:
+      dynamics:
+        h_min: -10.
+        h_max: 10.
+      commutative: 
+        s_min: -10.
+        s_max: 10. 
+        t_min: -10.
+        t_max: 10.
+      commutative_vv: 
+        integrator:
+          method: VelocityVerlet
+          stepsize: 0.1
+          nsteps: 1
+        h_min: -10.
+        h_max: 10.
+      additive: 
+        s_min: -5.
+        s_max: 5. 
+        t_min: -5.
+        t_max: 5.
+      additive_vv:
+        integrator:
+          method: VelocityVerlet
+          stepsize: 0.1
+          nsteps: 1
+        h_min: -10.
+        h_max: 10.
+      dyadic:
+        h_min: -5.
+        h_max: 5.
+      reversibility:
+        h_min: -10.
+        h_max: 10.

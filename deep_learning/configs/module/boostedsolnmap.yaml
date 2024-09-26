@@ -1,4 +1,4 @@
-_target_: models.BoostedSolutionMap
+_target_: modules.solutionmap.BoostedSolutionMap
 
 defaults:
   - problem: fpu
@@ -18,7 +18,7 @@ weight_init: xavier_uniform
 
 phi:
   module:
-    _target_: models.SolutionMap
+    _target_: modules.solutionmap.SolutionMap
   ckpt_path: ???
 
 forward_type: simple

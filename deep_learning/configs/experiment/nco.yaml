@@ -4,17 +4,18 @@
 # python train.py experiment=nco
 
 defaults:
+  - override /datamodule: default
   - override /module: solnmap
   - override /module/problem: nco
   - override /module/loss: mse
   - override /module/optimizer: adamw
   - override /module/scheduler: reduceonplateau
-  # - override /module/network: mlp
   - override /module/network/i2h: identity
-  - override /module/network/h2h: mlp
+  - override /module/network/h2h: modmlp
   - override /module/network/h2o: identity
   - override /trainer: gpu
   - override /callbacks: 
+    - hparams_updater
     - val_checkpoint
     - latest_checkpoint
     - lr_monitor
@@ -26,16 +27,39 @@ defaults:
     - early_stopping
 
 datamodule:
-  # train_dir: ${paths.data_dir}/train2
-  # test_dir: ${paths.data_dir}/test
-  train_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0
-  test_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version23/Dt=5e0/test
-  batch_size: 500
-  # batch_size: 5
-  subsample: 0.1
+  train:
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0/train
+    Dt: 5.0
+    sequence_len: 2
+    downsample_factor: 0.02
+  test:
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0/test
+    Dt: 5.0
+    sequence_len: 2
+    downsample_factor: 1.0
+  batch_size: 100
+
+  # supervised:
+  #   train:
+  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0
+  #     downsample_factor: 1.0
+  #   test:
+  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version23/Dt=5e0/test
+  #     downsample_factor: 0.1
+  #   batch_size: 1000
+  # unsupervised:
+  #   train:
+  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version20/Dt=5e0/train
+  #     downsample_factor: 0.01
+  #   test:
+  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version20/Dt=5e0/test
+  #     downsample_factor: 0.1
+  #   batch_size: 10
 
 trainer:
-  max_epochs: 5000
+  max_epochs: -1
+  max_steps: 1000000
+  min_steps: 200000
   # gradient_clip_val: 2.0
   # gradient_clip_algorithm: value
   # log_every_n_steps: 4
@@ -45,10 +69,35 @@ module:
   
   use_dimensionless_for_loss: True
 
-  regularization:
-    integrator_strength: 100.
+  # loss:
+  #   weight: [0.01, 1., 0.01, 1.]
+
+  loss_hparams:
+    misfit:
+      strength: 1.0
+    # integrator_informed_misfit: 
+    #   strength: 1.0
+    #   integrator:
+    #     method: VelocityVerlet
+    #     stepsize: 0.1
+    #     nsteps: 1 
+    #   fine_integrator:
+    #     method: VelocityVerlet
+    #     stepsize: 0.01
+    #     nsteps: 10
+    #   K: 5
+    commutative:
+      strength: 1.0
+      batch_size: 1000
+      integrator:
+        method: VelocityVerlet
+        stepsize: 0.1
+        nsteps: 1
+      K: 5
+
   optimizer:
     lr: 1e-3
+    # weight_decay: 0.0
   
   scheduler:
     scheduler:
@@ -56,39 +105,31 @@ module:
       # steps_per_epoch: 960
       # steps_per_epoch: 10
       # pct_start: 0.1
-      factor: 0.8
-      patience: 8
+      factor: 0.9
+      # patience: 8
+      patience: 5000
     
-  # loss:
-  #   weight: [0.01, 1., 0.01, 1.]
+    extras:
+      monitor: step_loss
+      interval: step
 
   network:
-    # layer_sizes: [24, 1000, 12]
-
-    # i2h:
-    #   layer_sizes: [12, 200, 500]
     h2h:
-      layer_sizes: [4, 500, 500, 500, 500, 4]
-      # input_dim: 4 
-      # output_dim: 4
-      # n_blocks: 2
-      # n_linears_per_block: 2
+      # layer_sizes: [4, 500, 500, 500, 500, 4]
+      input_dim: 4 
+      output_dim: 4
       # dof: 2
-      # hidden_dim: 10
-      # n_hidden_layers: 1
+      hidden_dim: 500
+      n_hidden_layers: 4
       # n_henon_layers: 16
-      # NIHenon_hidden_dim: 6
+      # NIHenon_hidden_dim: 8
       # NIHenon_n_hidden_layers: 1
-      # NIHenon_n_henon_layers: 8
+      # NIHenon_n_henon_layers: 20
       # Henon_hidden_dim: 8
       # Henon_n_hidden_layers: 1
-      # Henon_n_henon_layers: 10
+      # Henon_n_henon_layers: 20
       # activation:
       #   _target_: torch.nn.Tanh
-
-    # h2o:
-    #   layer_sizes: [500, 200, 12]
-
 
 callbacks:
   fixed_seq_weights:
@@ -101,7 +142,22 @@ callbacks:
     # init_len: 1
   predict_and_plot_trajectory:
     nsteps: 1000
-    save_predictions: true
+    save_predictions: false
+    log_freq: 10
+
+  early_stopping:
+    monitor: val/loss
+    patience: 20
+
+  hparams_updater:
+    # metric_hparams: 
+    #   commutative:
+    #     strength: 1.0
+    #     integrator:
+    #       method: VelocityVerlet
+    #       stepsize: 0.1
+    #       nsteps: 1
+    #     K: 5
 
 loggers:
   wandb:

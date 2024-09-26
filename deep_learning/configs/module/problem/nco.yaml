@@ -1,2 +1,2 @@
-_target_: problems.NonlinearCoupledOscillators
+_target_: problems.nco.NonlinearCoupledOscillators
 epsilon: 0.01

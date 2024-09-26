@@ -5,15 +5,15 @@
 defaults:
   - datamodule: default
   - callbacks:
-    - fixed_seq_weights
     - metrics_logger
   - trainer: gpu
   - paths: default
   - hydra: default
   - _self_
+  - experiment_eval: null
 
 module:
-  _target_: models.SolutionMap
+  _target_: modules.var_dt_solnmap.VariableDtSolutionMap
 
 # seed for random number generators in pytorch, numpy and python.random
 seed: 42
@@ -26,7 +26,8 @@ save_test_predictions: False
 
 # predict long-time trajectories on a few test samples 
 predict: True
-predict_nsteps: 1000
+predict_nsteps: 500
+predict_Dt: 4
 
 # passing checkpoint path is necessary for evaluation
 ckpt_path: ???

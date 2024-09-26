@@ -1,0 +1,4 @@
+hparams_updater:
+  _target_: callbacks.hparams_updater.HyperparamsUpdater
+  loss_hparams: null
+  metric_hparams: null
