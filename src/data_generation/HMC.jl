@@ -120,7 +120,7 @@ function sample_initial_conditions(
     ) where T<:AbstractFloat
 
     K0 = 0.5 * v0' * (mass .* v0)
-    K_new = truncated_normal(K0, epsilon*K0, num_samples; lower=0.)
+    K_new = truncated_normal(K0, epsilon*K0, T(0.), T(Inf), num_samples)
     
     vhat = nSphereSampling(length(v0), num_samples)
     v = vhat ./ sqrt.(mass) .* sqrt.(2 * K_new')

@@ -77,7 +77,7 @@ function normal(mean::T, std::T, n_samples::Int=1) where T<:AbstractFloat
 end
 
 """Generate random variables from a truncated normal distribution."""
-function truncated_normal(mean::T, std::T, n_samples::Int=1; lower::T=-Inf, upper::T=Inf) where T<:AbstractFloat
+function truncated_normal(mean::T, std::T, lower::T, upper::T, n_samples::Int=1) where T<:AbstractFloat
     
     if std < 0
         throw(ArgumentError("Standard deviation must be non-negative."))
