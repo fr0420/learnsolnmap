@@ -34,6 +34,9 @@ class NonlinearCoupledOscillators(SeparableHamiltonianSystem):
         self.char_acc1 = self.char_vel1 / self.char_time1
         self.char_acc2 = self.char_vel2 / self.char_time2
 
+    def __repr__(self) -> str:
+        return "NCO(epsilon={})".format(self.epsilon)
+
     def default_initial_states(self) -> torch.Tensor:
         """Generate initial states."""
         v1_ic = 0.
