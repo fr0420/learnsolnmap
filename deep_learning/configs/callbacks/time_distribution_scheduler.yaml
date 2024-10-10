@@ -1,0 +1,14 @@
+time_distribution_scheduler:
+  _target_: callbacks.hparams_updater.TimeDistributionScheduler
+  schedule_keys: [50000, 100000, 150000]
+  schedule_values: 
+    - type: uniform
+      min: -10.
+      max: 10.
+    - type: uniform
+      min: -20.
+      max: 20.
+    - type: uniform
+      min: -30.
+      max: 30.
+  by_epoch: false

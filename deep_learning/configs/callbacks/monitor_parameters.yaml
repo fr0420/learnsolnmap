@@ -1,0 +1,4 @@
+monitor_parameters:
+  _target_: callbacks.monitor_params.MonitorParameters
+  param_names: ['scale', 'mult_w', 'temp_enc.log_frequencies']
+  every_n_epochs: 5

@@ -1,0 +1,8 @@
+integrator_stepsize_scheduler:
+  _target_: callbacks.hparams_updater.IntegratorStepsizeScheduler
+  base_stepsize: 0.1
+  schedule_keys: [50000, 100000, 150000, 200000, 250000]
+  schedule_values: [0.8, 0.6, 0.4, 0.2, 0.1]
+  by_epoch: false
+  base_batch_size: 1000
+  adjust_batch_size: true
