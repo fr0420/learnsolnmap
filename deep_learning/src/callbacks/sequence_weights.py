@@ -1,3 +1,4 @@
+from typing import List
 import torch
 from torch import nn
 from pytorch_lightning.callbacks import Callback
@@ -5,8 +6,8 @@ from bisect import bisect_right
 
 
 class FixedSequenceWeights(Callback):
-    def __init__(self, weights):
-        self.weights = torch.tensor(weights)
+    def __init__(self, weights: List[float]):
+        self.weights = weights
         
     def on_fit_start(self, trainer, pl_module):
         pl_module.set_seq_weights(self.weights)

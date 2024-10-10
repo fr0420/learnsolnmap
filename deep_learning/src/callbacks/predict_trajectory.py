@@ -7,15 +7,13 @@ import torch
 from typing import Dict, Union
 from torch import Tensor
 from matplotlib.figure import Figure
-from modules.fixed_dt_solnmap import BaseSolutionMap
-from modules.var_dt_solnmap import BaseVariableDtSolutionMap
+from modules.solnmap import BaseSolutionMap
 
 
 logger = logging.getLogger(__name__)
 
 
-def predict_and_plot(samples: Tensor, model: Union[BaseSolutionMap, BaseVariableDtSolutionMap], 
-                     nsteps: int, Dt: float = None, plot: bool = True):
+def predict_and_plot(samples: Tensor, model: BaseSolutionMap, nsteps: int, t: float, plot: bool = True):
     """Predict and plot trajectories."""
 
     logger.info("Start predicting!")
@@ -26,14 +24,16 @@ def predict_and_plot(samples: Tensor, model: Union[BaseSolutionMap, BaseVariable
     # Set model to eval mode for prediction
     model.eval()
     with torch.no_grad():
-        if isinstance(model, BaseVariableDtSolutionMap):
-            if Dt is None:
-                raise ValueError("Dt must be provided for prediction.")
-            else:
-                Dt = torch.tensor(Dt, dtype=model.dtype).repeat(samples.shape[0], 1).to(model.device)
-            predictions = model.predict_sequence(samples, Dt, sequence_len=nsteps+1)
-        else:
-            predictions = model(samples, sequence_len=nsteps+1)
+        t = torch.tensor(t, dtype=model.dtype).repeat(samples.shape[0], 1).to(model.device)
+        predictions = model.predict_sequence(samples, t, sequence_len=nsteps+1)
+        # if isinstance(model, BaseVariableDtSolutionMap):
+        #     if Dt is None:
+        #         raise ValueError("Dt must be provided for prediction.")
+        #     else:
+        #         Dt = torch.tensor(Dt, dtype=model.dtype).repeat(samples.shape[0], 1).to(model.device)
+        #     predictions = model.predict_sequence(samples, Dt, sequence_len=nsteps+1)
+        # else:
+        #     predictions = model(samples, sequence_len=nsteps+1)
 
     # Set model back to train mode
     model.train()
@@ -100,19 +100,19 @@ class PredictAndPlotTrajectory(pl.Callback):
         self.save_figures = save_figures
         self.output_dir = output_dir
 
-    def setup(self, trainer: pl.Trainer, pl_module: Union[BaseSolutionMap, BaseVariableDtSolutionMap], stage: str) -> None:
+    def setup(self, trainer: pl.Trainer, pl_module: BaseSolutionMap, stage: str) -> None:
         self.predict_samples: Tensor = pl_module.problem.default_initial_states()
 
-    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: Union[BaseSolutionMap, BaseVariableDtSolutionMap]) -> None:
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: BaseSolutionMap) -> None:
         if trainer.sanity_checking:  # optional skip
             return
         if trainer.current_epoch % self.log_freq == 0:
             self.predict_and_plot(trainer, pl_module)
 
-    def on_test_epoch_end(self, trainer: pl.Trainer, pl_module: Union[BaseSolutionMap, BaseVariableDtSolutionMap]) -> None:
+    def on_test_epoch_end(self, trainer: pl.Trainer, pl_module: BaseSolutionMap) -> None:
         self.predict_and_plot(trainer, pl_module)
     
-    def predict_and_plot(self, trainer: pl.Trainer, pl_module: Union[BaseSolutionMap, BaseVariableDtSolutionMap]) -> None:
+    def predict_and_plot(self, trainer: pl.Trainer, pl_module: BaseSolutionMap) -> None:
         predictions, figures = predict_and_plot(self.predict_samples, pl_module, self.nsteps, self.Dt)
         
         # Add epoch number to the figure titles

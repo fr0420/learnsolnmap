@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from networks.basics import LambdaLayer, Scaler
 from torch import Tensor
-from problems import SeparableHamiltonianSystem
+from problems.default import SeparableHamiltonianSystem
 
 
 class ScaledMSELoss(nn.Module):

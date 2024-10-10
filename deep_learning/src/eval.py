@@ -1,9 +1,12 @@
+from typing import List
+
 import hydra
 import logging
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, DictConfig
 import pytorch_lightning as pl
 from pytorch_lightning import seed_everything
 import torch
+
 from utils.utils import (
     instantiate_callbacks,
     instantiate_litloggers,
@@ -13,9 +16,6 @@ from utils.utils import (
 from utils.saving_utils import save_test_metrics, save_test_predictions
 from utils.benchmark_utils import time_forward
 from callbacks.predict_trajectory import predict_and_plot, save_predictions, save_figures
-
-from omegaconf import DictConfig
-from typing import List
 
 
 logger = logging.getLogger(__name__)
@@ -97,15 +97,15 @@ def main(cfg: DictConfig) -> pl.Trainer:
         logger.info(f"Predict samples = {predict_samples}")
         if isinstance(cfg.predict_Dt, float):
             assert isinstance(cfg.predict_nsteps, int)
-            dirpath = cfg.paths.output_dir+"/predictions"
-            predictions, figures = predict_and_plot(predict_samples, model, nsteps=cfg.predict_nsteps, Dt=cfg.predict_Dt)
+            dirpath = cfg.paths.output_dir+f"/predictions/{cfg.predict_nsteps}x{cfg.predict_Dt}"
+            predictions, figures = predict_and_plot(predict_samples, model, nsteps=cfg.predict_nsteps, t=cfg.predict_Dt)
             save_predictions(predictions.cpu(), dirpath=dirpath)
             save_figures(figures, dirpath=dirpath)
         else:
             assert len(cfg.predict_nsteps) == len(cfg.predict_Dt)
             for nsteps, Dt in zip(cfg.predict_nsteps, cfg.predict_Dt):
                 dirpath = cfg.paths.output_dir + f"/predictions/{nsteps}x{Dt}"
-                predictions, figures = predict_and_plot(predict_samples, model, nsteps=nsteps, Dt=Dt)
+                predictions, figures = predict_and_plot(predict_samples, model, nsteps=nsteps, t=Dt)
                 save_predictions(predictions.cpu(), dirpath=dirpath)
                 save_figures(figures, dirpath=dirpath)
 
