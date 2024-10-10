@@ -39,6 +39,8 @@ class BaseLitModel(pl.LightningModule):
 
         def init_weights(m):
             if isinstance(m, nn.Linear):
+                if hasattr(m, "is_pretrained") and m.is_pretrained:
+                    return
                 if m.bias is not None:
                     m.bias.data.zero_()
                 weight_init_fn(m.weight)

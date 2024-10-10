@@ -1,6 +1,6 @@
 import torch
-from modules.fixed_dt_solnmap import SolutionMap
-from modules.var_dt_solnmap import VariableDtSolutionMap
+from modules.fixed_timestep import FixedStepSolutionMap
+from modules.variable_timestep import IdentityEnforcedSolutionMap, T0CenteredSolutionMap
 
 
 def load_model_from_ckpt(ckpt_path, model_name="SolutionMap"):
@@ -30,9 +30,11 @@ def load_model_from_ckpt(ckpt_path, model_name="SolutionMap"):
 
     # Instantiate the model using hyperparameters
     model = {
-        "SolutionMap": SolutionMap,
-        "VariableDtSolutionMap": VariableDtSolutionMap
-    }.get(model_name, SolutionMap)(**hyper_params)
+        "FixedStepSolutionMap": FixedStepSolutionMap,
+        "IdentityEnforcedSolutionMap": IdentityEnforcedSolutionMap,
+        "T0CenteredSolutionMap": T0CenteredSolutionMap,
+        "VariableDtSolutionMap": IdentityEnforcedSolutionMap,
+    }.get(model_name)(**hyper_params)
 
     # If state_dict is empty, return without loading weights
     if not state_dict:
