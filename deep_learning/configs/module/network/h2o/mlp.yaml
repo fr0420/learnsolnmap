@@ -1,5 +1,0 @@
-_target_: networks.basics.MLP
-layer_sizes: [1000, 12]
-activation:
-  _target_: torch.nn.ELU
-use_bn: False

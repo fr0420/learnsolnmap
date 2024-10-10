@@ -1,8 +1,0 @@
-_target_: networks.pirate.PirateNet
-input_dim: 12
-output_dim: 12
-hidden_dim: 500
-n_blocks: 2
-n_linears_per_block: 3
-activation:
-  _target_: torch.nn.ELU

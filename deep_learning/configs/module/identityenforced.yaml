@@ -1,0 +1,17 @@
+_target_: modules.variable_timestep.IdentityEnforcedSolutionMap
+
+defaults:
+  - problem: fpu
+  - optimizer: adamw
+  - scheduler: 1cycle
+  - loss: energynormsquared
+  - network: modmlp
+  - _self_
+
+multiplier_activation:
+  _target_: torch.nn.Tanh
+
+loss_hparams: null
+use_dimensionless: true
+
+weight_init: xavier_uniform

@@ -1,7 +1,0 @@
-_target_: networks.pirate.ModifiedMLP
-input_dim: 12 
-output_dim: 12 
-hidden_dim: 500
-n_hidden_layers: 4
-activation:
-  _target_: torch.nn.ELU

@@ -1,0 +1,18 @@
+_target_: modules.fixed_timestep.FixedStepSolutionMap
+
+defaults:
+  - problem: fpu
+  - optimizer: adamw
+  - scheduler: 1cycle
+  - loss: energynormsquared
+  - network@network.i2h: identity
+  - network@network.h2h: modmlp
+  - network@network.h2o: identity
+  - _self_
+
+T0: ??? 
+
+loss_hparams: null
+use_dimensionless: true
+
+weight_init: xavier_uniform

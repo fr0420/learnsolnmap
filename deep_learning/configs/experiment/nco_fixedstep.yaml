@@ -1,18 +1,16 @@
 # @package _global_
 
 # to execute this experiment run:
-# python train.py experiment=nco
+# python train.py experiment=nco_fixedstep
 
 defaults:
   - override /datamodule: default
-  - override /module: solnmap
+  - override /module: fixedstep
   - override /module/problem: nco
   - override /module/loss: mse
   - override /module/optimizer: adamw
   - override /module/scheduler: reduceonplateau
-  - override /module/network/i2h: identity
-  - override /module/network/h2h: modmlp
-  - override /module/network/h2o: identity
+  - override /module/network@module.network.h2h: modmlp
   - override /trainer: gpu
   - override /callbacks: 
     - hparams_updater
@@ -59,41 +57,20 @@ datamodule:
 trainer:
   max_epochs: -1
   max_steps: 1000000
-  min_steps: 200000
+  min_steps: 500000
   # gradient_clip_val: 2.0
   # gradient_clip_algorithm: value
   # log_every_n_steps: 4
 
 module:
-  Delta_t: 5e0
+  T0: 5e0
   
-  use_dimensionless_for_loss: True
-
   # loss:
   #   weight: [0.01, 1., 0.01, 1.]
 
   loss_hparams:
-    misfit:
+    data_misfit:
       strength: 1.0
-    # integrator_informed_misfit: 
-    #   strength: 1.0
-    #   integrator:
-    #     method: VelocityVerlet
-    #     stepsize: 0.1
-    #     nsteps: 1 
-    #   fine_integrator:
-    #     method: VelocityVerlet
-    #     stepsize: 0.01
-    #     nsteps: 10
-    #   K: 5
-    commutative:
-      strength: 1.0
-      batch_size: 1000
-      integrator:
-        method: VelocityVerlet
-        stepsize: 0.1
-        nsteps: 1
-      K: 5
 
   optimizer:
     lr: 1e-3
@@ -115,12 +92,11 @@ module:
 
   network:
     h2h:
-      # layer_sizes: [4, 500, 500, 500, 500, 4]
       input_dim: 4 
       output_dim: 4
       # dof: 2
-      hidden_dim: 500
-      n_hidden_layers: 4
+      hidden_dim: 1000
+      n_hidden_layers: 6
       # n_henon_layers: 16
       # NIHenon_hidden_dim: 8
       # NIHenon_n_hidden_layers: 1
@@ -143,7 +119,7 @@ callbacks:
   predict_and_plot_trajectory:
     nsteps: 1000
     save_predictions: false
-    log_freq: 10
+    log_freq: 20
 
   early_stopping:
     monitor: val/loss
@@ -161,4 +137,4 @@ callbacks:
 
 loggers:
   wandb:
-    group: nco
+    group: nco_fixedstep

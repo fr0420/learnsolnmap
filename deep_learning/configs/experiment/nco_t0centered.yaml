@@ -1,0 +1,172 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=nco_t0centered
+
+defaults:
+  - override /datamodule: default
+  - override /module: t0centered
+  - override /module/problem: nco
+  - override /module/loss: mse
+  - override /module/optimizer: adamw
+  - override /module/scheduler: reduceonplateau
+  - override /module/network@module.net_T0: modmlp
+  - override /module/network@module.net_residual: modmlp 
+  - override /trainer: gpu
+  - override /callbacks: 
+    - hparams_updater
+    # - integrator_stepsize_scheduler
+    - val_checkpoint
+    - latest_checkpoint
+    - lr_monitor
+    - metrics_logger
+    - tqdm_progress_bar
+    - predict_and_plot_trajectory
+    - early_stopping
+    - monitor_parameters
+
+datamodule:
+  train:
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0/train
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e1_min_Dt=-1e1/train
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e2_min_Dt=-1e2/train
+    sequence_len: 2
+    downsample_factor: 0.02
+    Dt: 5.0
+    # Dt_range: [19.0, 21.0]
+    # exclude: false
+  test:
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0/test
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e1_min_Dt=-1e1/test
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e2_min_Dt=-1e2/test
+    sequence_len: 2
+    downsample_factor: 1.0
+    Dt: 5.0
+    # Dt_range: [19.0, 21.0]
+    # exclude: false
+  batch_size: 100
+
+trainer:
+  max_epochs: -1
+  max_steps: 1000000
+  min_steps: 500000
+  gradient_clip_val: 2.0
+  gradient_clip_algorithm: value
+  # log_every_n_steps: 4
+
+module:
+  _target_: modules.variable_timestep.T0CenteredSolutionMap
+
+  T0: 5.0 
+
+  loss_hparams:
+    data_misfit: 
+      strength: 1.0
+    numerical_residual:
+      strength: 10.0
+      batch_size: 500
+      integrator: 
+        method: Ruth3
+        stepsize: 0.1
+        nsteps: 1
+      t_dist:
+        # type: uniform
+        # min: -20.
+        # max: 20.
+        type: normal
+        mean: 5.
+        std: 0.5
+    # dyadic:
+    #   strength: 0.1
+    #   batch_size: 2000
+    #   t_dist:
+    #     type: uniform
+    #     min: -10.
+    #     max: 10.
+    # commutative:
+    #   strength: 0.1
+    #   batch_size: 2000
+    #   t_dist:
+    #     type: uniform
+    #     min: -10.
+    #     max: 10.
+    #   s_dist:
+    #     type: uniform
+    #     min: -10.
+    #     max: 10.
+  
+  optimizer:
+    lr: 1e-3
+    # weight_decay: 0.0
+  
+  scheduler:
+    scheduler:
+      # total_steps: ${trainer.max_steps}
+      # pct_start: 0.1
+      factor: 0.9
+      # patience: 8
+      patience: 5000
+    
+    extras:
+      monitor: step_loss
+      interval: step
+
+  multiplier_activation:
+    _target_: torch.nn.Tanh
+
+  temporal_encoding:
+    _target_: modules.variable_timestep.Time2VecEncoding
+    output_dim: 5
+    min_period: 1.0
+    max_period: 1000.0
+
+  net_T0:
+    input_dim: 4
+    output_dim: 4
+    hidden_dim: 1000
+    n_hidden_layers: 6
+    # activation:
+    #   _target_: torch.nn.Tanh
+
+  net_residual:
+    input_dim: 9
+    output_dim: 4
+    hidden_dim: 1000
+    n_hidden_layers: 6
+    # activation:
+    #   _target_: torch.nn.Tanh
+
+callbacks:
+  predict_and_plot_trajectory:
+    nsteps: 1000
+    Dt: 5.0
+    save_predictions: false
+    log_freq: 20
+
+  monitor_parameters:
+    param_names: ['scale', 'mult_w', 'temp_enc.log_frequencies']
+    # param_names: ['scale', 'mult_w']
+    every_n_epochs: 5
+
+  val_checkpoint:
+    save_top_k: 3
+    # every_n_epochs: 5
+
+  early_stopping:
+    monitor: val/loss
+    patience: 20
+  
+  # integrator_stepsize_scheduler:
+  #   base_stepsize: 0.1
+  #   schedule_keys: [50000, 100000, 150000, 200000, 250000]
+  #   schedule_values: [0.8, 0.6, 0.4, 0.2, 0.1]
+  #   by_epoch: false
+  #   base_batch_size: 2000
+  #   adjust_batch_size: true
+
+  hparams_updater:
+    metric_hparams:
+
+loggers:
+  wandb:
+    group: nco_t0centered

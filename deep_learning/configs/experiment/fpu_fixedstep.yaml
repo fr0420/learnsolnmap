@@ -1,0 +1,111 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=fpu_fixedstep
+
+defaults:
+  - override /datamodule: default
+  - override /module: fixedstep
+  - override /module/problem: fpu
+  - override /module/loss: anchoredenergynormsquared
+  - override /module/optimizer: adamw
+  - override /module/scheduler: reduceonplateau
+  - override /module/network@module.network.h2h: modmlp
+  - override /trainer: gpu
+  - override /callbacks: 
+    - hparams_updater
+    - val_checkpoint
+    - latest_checkpoint
+    - lr_monitor
+    - fixed_seq_weights
+    # - seq_len_scheduler
+    - metrics_logger
+    - tqdm_progress_bar
+    - predict_and_plot_trajectory
+    - early_stopping
+
+datamodule:
+  train:
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/train
+    Dt: 0.125
+    sequence_len: 2
+    downsample_factor: 1.0
+  test:
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/test
+    Dt: 0.125
+    sequence_len: 2
+    downsample_factor: 1.0
+  batch_size: 100
+
+trainer:
+  max_epochs: -1
+  max_steps: 1000000
+  min_steps: 500000
+  # min_epochs: 200
+  # gradient_clip_val: 2.0
+  # gradient_clip_algorithm: value
+  # log_every_n_steps: 4
+
+module:
+  T0: 0.125
+
+  use_dimensionless: false
+
+  problem:
+    omega: 50
+
+  loss_hparams:
+    data_misfit:
+      strength: 1.0
+
+  optimizer:
+    lr: 1e-3
+  
+  scheduler:
+    scheduler:
+      # steps_per_epoch: 1600
+      # pct_start: 0.1
+      factor: 0.9
+      # patience: 8
+      patience: 5000
+    
+    extras:
+      monitor: step_loss
+      interval: step
+
+  network:
+    h2h:
+      input_dim: 12 
+      output_dim: 12
+      # n_blocks: 2
+      # n_linears_per_block: 2
+      hidden_dim: 1000
+      n_hidden_layers: 6
+      # n_henon_layers: 16
+      # activation:
+      #   _target_: torch.nn.Tanh
+      # n_features: 500
+
+
+callbacks:
+  fixed_seq_weights:
+    _target_: callbacks.sequence_weights.FixedSequenceWeights
+    # weights: [0., 1., 1., 1., 0., 0.]
+    weights: [0., 1.]
+  # seq_len_scheduler:
+    # weights: [1., 1., 1., 1., 1., 1.]
+    # milestones: [10, 20, 50, 100, 200]
+    # init_len: 1s
+
+  predict_and_plot_trajectory:
+    nsteps: 1000
+    save_predictions: false
+    log_freq: 10
+
+  early_stopping:
+    monitor: val/loss
+    patience: 20
+
+loggers:
+  wandb:
+    group: fpu
