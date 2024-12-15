@@ -1,0 +1,41 @@
+[problem]                           # ode problem
+_name_ = "3body-2d"
+G = 1.0
+m1 = 1.0
+m2 = 1.0
+m3 = 1.0
+
+[algorithm]                         # data generation algorithm
+# _name_ = "trajensemble"
+# epsilon = 0.2
+# n_chains = 4000
+# n_trans_per_chain = 50
+
+# _name_ = "hmc-H0"  
+# epsilon = 0.1
+# n_chains = 40
+# n_trans_per_chain = 500
+# n_steps_per_trans = 1
+# with_rejection = false
+
+_name_ = "rhmc-H0"  
+epsilon = 0.2
+n_chains = 4000
+n_trans_per_chain = 1000
+n_steps_per_trans = 1
+with_rejection = true
+
+# _name_ = "hmc"
+# beta = 1.0
+# n_chains = 5
+# n_trans_per_chain = 10
+# n_steps_per_trans = 1
+# with_rejection = true
+
+[integration]
+dt = 0.4                           # time interval 
+nsteps = 40                     # number of steps per interval
+method = "DPRKN5"               # solver method
+use_float64x4 = true               # use Float64x4
+abstol = 1e-11
+reltol = 1e-11

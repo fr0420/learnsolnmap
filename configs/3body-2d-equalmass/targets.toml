@@ -1,0 +1,15 @@
+[problem]                           # ode problem
+_name_ = "3body-2d"
+G = 1.0
+m1 = 1.0
+m2 = 1.0
+m3 = 1.0
+
+[integration]
+Delta_t = 0.5                       # time interval 
+N = 1                              # number of intervals
+nsteps = 50                         # number of steps per interval
+method = "DPRKN5"               # solver method
+use_float64x4 = true                # use Float64x4
+abstol = 1e-11
+reltol = 1e-11
