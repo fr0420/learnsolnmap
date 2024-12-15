@@ -22,17 +22,25 @@ class NonlinearCoupledOscillators(SeparableHamiltonianSystem):
             (-1.6, 1.6), 
             (-16, 16)
         ]  # bounds for v1, v2, x1, x2
-        
+        self.m1 = 1.
+        self.m2 = 1. / self.epsilon
+
         # Characteristic length scales and time scales for nondimensionalization
+        self.char_len = 1.
+        self.char_time = 1.
+        self.char_mass = 1.
+        self.char_vel = self.char_len / self.char_time  # O(1)
+        self.char_acc = self.char_vel / self.char_time  # O(1)
+
         # char_len = (1, 1), char_time = (1, 1/epsilon) effectively converts (v1, v2, x1, x2) to (p1, p2, q1, q2)
-        self.char_len1 = 1.
-        self.char_len2 = 1. 
-        self.char_time1 = 1.
-        self.char_time2 = 1. / self.epsilon
-        self.char_vel1 = self.char_len1 / self.char_time1
-        self.char_vel2 = self.char_len2 / self.char_time2
-        self.char_acc1 = self.char_vel1 / self.char_time1
-        self.char_acc2 = self.char_vel2 / self.char_time2
+        # self.char_len1 = 1.
+        # self.char_len2 = 1. 
+        # self.char_time1 = 1.
+        # self.char_time2 = 1. / self.epsilon
+        # self.char_vel1 = self.char_len1 / self.char_time1  # O(1)
+        # self.char_vel2 = self.char_len2 / self.char_time2  # O(epsilon)
+        # self.char_acc1 = self.char_vel1 / self.char_time1  # O(1)
+        # self.char_acc2 = self.char_vel2 / self.char_time2  # O(epsilon^2)
 
     def __repr__(self) -> str:
         return "NCO(epsilon={})".format(self.epsilon)
@@ -144,40 +152,46 @@ class NonlinearCoupledOscillators(SeparableHamiltonianSystem):
             "osc2_rel_traj_err": reduction_fn(osc2_rel_traj_errors),
         }
 
+    def vx_to_pq(self, vx: torch.Tensor) -> torch.Tensor:
+        """Convert (v1, v2, x1, x2) to (p1, p2, q1, q2)."""
+        q1, q2 = vx[..., 2], vx[..., 3]
+        p1, p2 = vx[..., 0] * self.m1, vx[..., 1] * self.m2
+        return torch.stack([p1, p2, q1, q2], dim=-1)
+    
+    def pq_to_vx(self, pq: torch.Tensor) -> torch.Tensor:
+        """Convert (p1, p2, q1, q2) to (v1, v2, x1, x2)."""
+        x1, x2 = pq[..., 2], pq[..., 3]
+        v1, v2 = pq[..., 0] / self.m1, pq[..., 1] / self.m2
+        return torch.stack([v1, v2, x1, x2], dim=-1)
+    
     def nondim_u(self, u: torch.Tensor) -> torch.Tensor:
         """Nondimensionalize u = (v1, v2, x1, x2)."""
-        u_nd = u.clone()
-        u_nd[..., 0] = u_nd[..., 0] / self.char_vel1
-        u_nd[..., 1] = u_nd[..., 1] / self.char_vel2
-        u_nd[..., 2] = u_nd[..., 2] / self.char_len1
-        u_nd[..., 3] = u_nd[..., 3] / self.char_len2
+        u_nd = self.vx_to_pq(u)
+        u_nd[..., :2] = u_nd[..., :2] / (self.char_vel * self.char_mass)
+        u_nd[..., 2:] = u_nd[..., 2:] / self.char_len
         return u_nd
     
     def dim_u(self, u_nd: torch.Tensor) -> torch.Tensor:
-        """Dimensionalize u_nd = (v1_nd, v2_nd, x1_nd, x2_nd)."""
+        """Dimensionalize u_nd = (p1_nd, p2_nd, q1_nd, q2_nd)."""
         u = u_nd.clone()
-        u[..., 0] = u[..., 0] * self.char_vel1
-        u[..., 1] = u[..., 1] * self.char_vel2
-        u[..., 2] = u[..., 2] * self.char_len1
-        u[..., 3] = u[..., 3] * self.char_len2
+        u[..., :2] = u[..., :2] * self.char_vel * self.char_mass
+        u[..., 2:] = u[..., 2:] * self.char_len
+        u = self.pq_to_vx(u)
         return u
 
     def nondim_du(self, du: torch.Tensor) -> torch.Tensor:
         """Nondimensionalize du = (dv1, dv2, dx1, dx2)."""
-        du_nd = du.clone()
-        du_nd[..., 0] = du_nd[..., 0] / self.char_acc1
-        du_nd[..., 1] = du_nd[..., 1] / self.char_acc2
-        du_nd[..., 2] = du_nd[..., 2] / self.char_vel1
-        du_nd[..., 3] = du_nd[..., 3] / self.char_vel2
+        du_nd = self.vx_to_pq(du)
+        du_nd[..., :2] = du_nd[..., :2] / (self.char_acc * self.char_mass)
+        du_nd[..., 2:] = du_nd[..., 2:] / self.char_vel
         return du_nd
 
     def dim_du(self, du_nd: torch.Tensor) -> torch.Tensor:
-        """Dimensionalize du_nd = (dv1_nd, dv2_nd, dx1_nd, dx2_nd)."""
+        """Dimensionalize du_nd = (dp1_nd, dp2_nd, dq1_nd, dq2_nd)."""
         du = du_nd.clone()
-        du[..., 0] = du[..., 0] * self.char_acc1
-        du[..., 1] = du[..., 1] * self.char_acc2
-        du[..., 2] = du[..., 2] * self.char_vel1
-        du[..., 3] = du[..., 3] * self.char_vel2
+        du[..., :2] = du[..., :2] * self.char_acc * self.char_mass
+        du[..., 2:] = du[..., 2:] * self.char_vel
+        du = self.pq_to_vx(du)
         return du
     
     def plot_trajectories(self, trajectories: torch.Tensor) -> Dict[str, plt.Figure]:
