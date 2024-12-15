@@ -1,4 +1,4 @@
-_target_: losses.WeightedMSELoss
+_target_: losses.losses.WeightedMSELoss
 
 weight: [1., 1., 1., 1.,]
 reduction: none

@@ -1,4 +1,4 @@
-_target_: losses.ScaledMSELoss
+_target_: losses.losses.ScaledMSELoss
 
 scaler: 
   _target_: networks.basics.Scaler

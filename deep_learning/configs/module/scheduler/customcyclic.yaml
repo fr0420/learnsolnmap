@@ -1,13 +1,13 @@
 scheduler:
-  _target_: lr_scheduler.CustomCyclicLR
-  steps_per_cycle: 
+  _target_: schedulers.cyclic.CustomCyclicLR
+  steps_per_cycle: ???
   mult_factor: 1.
-  base_lr: 1e-4
-  max_lr: 1e-4
-  scale_mode: iterations
+  base_lr: 1e-5
+  max_lr: 1e-3
+  scale_mode: cycle
+  scale_fn_type: exponential
+  scale_fn_factor: 0.9
   anneal_strategy: cos
-  pct_start: 0.
-  base_lr_scale_fn:
-  max_lr_scale_fn:
+  pct_start: 0.3
 extras:
   interval: step

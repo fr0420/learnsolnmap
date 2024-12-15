@@ -1,4 +1,4 @@
-_target_: losses.MeanEnergyNormSquaredLoss
+_target_: losses.losses.MeanEnergyNormSquaredLoss
 
 problem: ${module.problem}
 reduction: none
