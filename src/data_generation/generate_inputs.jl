@@ -50,12 +50,13 @@ function save_configuration(output_dir, config)
 end
 
 function get_solvers(config::Dict{String, Any}, prob::SeparableHamiltonianSystem)
+    solver_kwargs = get_solver_kwargs(config)
     phi_dt = (v0, x0) -> ode_solve(
         (ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), 
-        METHODS[config["method"]], v0, x0, 0., config["dt"], config["nsteps"], false)
+        METHODS[config["method"]], v0, x0, 0., config["dt"], config["nsteps"], false; solver_kwargs...)
     phi_h = (v0, x0, nsteps) -> ode_solve(
         (ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), 
-        METHODS[config["method"]], v0, x0, 0., nsteps * config["dt"]/config["nsteps"], nsteps, false)
+        METHODS[config["method"]], v0, x0, 0., nsteps * config["dt"]/config["nsteps"], nsteps, false; solver_kwargs...)
     mean_dt_div_h = Float64(config["nsteps"])
     return phi_dt, phi_h, mean_dt_div_h
 end
@@ -104,20 +105,28 @@ end
 
 function run_sampling(config, transition, prob, v0, x0)
     if config["_name_"] == "hmc-H0" || config["_name_"] == "rhmc-H0" || config["_name_"] == "trajensemble"
-        init_conditions = HMC.sample_initial_conditions(v0, x0, mass(prob); 
+        # init_conditions = sample_initial_conditions(v0, x0, mass(prob); 
+        #     num_samples=config["n_chains"], 
+        #     epsilon=config["epsilon"]
+        # )
+        # init_conditions = sample_initial_conditions_3body(v0, x0, mass(prob); 
+        #     num_samples=config["n_chains"], 
+        #     epsilon=config["epsilon"]
+        # )
+        init_conditions = sample_initial_conditions_3body_equilateral(eltype(v0); 
             num_samples=config["n_chains"], 
-            epsilon=config["epsilon"]
+            nu=config["epsilon"]
         )
-        elapsed_time = @elapsed res = HMC.chain_ensemble(init_conditions, transition; 
+        elapsed_time = @elapsed samples, total_rejections = chain_ensemble(init_conditions, transition; 
             num_transitions=config["n_trans_per_chain"]
         )
     elseif config["_name_"] == "hmc" || config["_name_"] == "rhmc"
-        elapsed_time = @elapsed res = HMC.chain_ensemble(v0, x0, transition; 
+        elapsed_time = @elapsed samples, total_rejections = chain_ensemble(v0, x0, transition; 
             num_chains=config["n_chains"],
             num_transitions=config["n_trans_per_chain"]
         )
     end
-    return elapsed_time, res 
+    return elapsed_time, samples, total_rejections
 end
 
 function main()
@@ -141,13 +150,13 @@ function main()
 
     @info "Sampling chains!"
     transition = select_transition_algorithm(config["algorithm"], prob, phi_dt, phi_h, mean_dt_div_h)
-    elapsed_time, res = run_sampling(config["algorithm"], transition, prob, v0, x0)
+    elapsed_time, samples, total_rejections = run_sampling(config["algorithm"], transition, prob, v0, x0)
 
-    @info "Done generating inputs. Elapsed time = $elapsed_time seconds. Number of samples = $(length(res))."
+    @info "Done generating inputs. Elapsed time = $elapsed_time seconds. Number of samples = $(length(samples)). Total rejections = $total_rejections."
     
     filepath = joinpath(output_dir, "U0.csv")
     @info "Saving results at $filepath ..."
-    save_csv(filepath, res)
+    save_csv(filepath, samples)
 end
 
 main()
