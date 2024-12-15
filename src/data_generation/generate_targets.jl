@@ -4,7 +4,7 @@ Generate targets given the file of inputs U0.csv.
 
 
 using Distributed  # for parallel computing
-addprocs(40)
+addprocs(80)
 
 include("../utils/parsing_utils.jl")
 include("../utils/logging_utils.jl")
@@ -35,10 +35,11 @@ function parse_commandline()
 end
 
 @everywhere function get_solver(config::Dict{String, Any}, prob::SeparableHamiltonianSystem)
+    solver_kwargs = get_solver_kwargs(config)
     T = config["use_float64x4"] ? Float64x4 : Float64
     solver = (v0, x0) -> ode_solve(
         (ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), 
-        METHODS[config["method"]], T.(v0), T.(x0), 0., config["Delta_t"], config["nsteps"], false)
+        METHODS[config["method"]], T.(v0), T.(x0), 0., config["Delta_t"], config["nsteps"], false; solver_kwargs...)
     return solver
 end
 

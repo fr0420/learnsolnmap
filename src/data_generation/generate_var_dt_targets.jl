@@ -35,10 +35,11 @@ function parse_commandline()
 end
 
 @everywhere function get_solver(config::Dict{String, Any}, prob::SeparableHamiltonianSystem)
+    solver_kwargs = get_solver_kwargs(config)
     T = config["use_float64x4"] ? Float64x4 : Float64
     solver = (v0, x0, nsteps) -> ode_solve(
         (ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), 
-        METHODS[config["method"]], T.(v0), T.(x0), 0., nsteps * config["Delta_t"]/config["nsteps"], abs(nsteps), false)
+        METHODS[config["method"]], T.(v0), T.(x0), 0., nsteps * config["Delta_t"]/config["nsteps"], abs(nsteps), false; solver_kwargs...)
     return solver
 end
 
