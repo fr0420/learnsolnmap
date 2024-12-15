@@ -1,0 +1,5 @@
+_target_: problems.threebody.ThreeBody
+m1: 100.0
+m2: 1.0
+m3: 0.001
+G: 1.0
