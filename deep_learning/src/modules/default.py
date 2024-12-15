@@ -17,13 +17,15 @@ class BaseLitModel(pl.LightningModule):
             self, 
             optimizer: DictConfig, 
             scheduler: DictConfig, 
-            weight_init: str
+            weight_init: str,
+            automatic_optimization: bool = True,
         ) -> None:
         super(BaseLitModel, self).__init__()
         
         self.opt_params = optimizer
         self.slr_params = scheduler
         self.weight_init = weight_init
+        self.automatic_optimization = automatic_optimization
 
         self.training_step_outputs = [] 
         self.validation_step_outputs = []

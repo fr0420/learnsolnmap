@@ -7,6 +7,7 @@ from torch import nn
 from omegaconf import DictConfig, OmegaConf
 
 from modules.default import BaseLitModel
+from modules.collocation_handler import CollocationPoints, CollocationPointsGenerator
 from integrators.integrator import Integrator
 from utils.integrator_utils import instantiate_dynamical_ode_integrator
 from problems.default import SeparableHamiltonianSystem
@@ -19,49 +20,6 @@ DEFAULT_METRIC_HPARAMS = {}
 DEFAULT_SEQ_WEIGHTS = [0.0, 1.0]
 
 
-def prepare_random_timesteps(batch_size: int, dist_config: DictConfig, device: str, dtype: torch.dtype) -> torch.Tensor:
-    """
-    Prepares random timesteps based on a given distribution configuration.
-
-    Args:
-        batch_size (int): Number of random timesteps to generate.
-        dist_config (DictConfig): Configuration for the distribution. Must contain 'type' and relevant parameters.
-        device (str): Device to allocate the tensor to ('cpu' or 'cuda').
-        dtype (torch.dtype): Data type of the resulting tensor.
-
-    Returns:
-        torch.Tensor: A tensor of shape (batch_size, 1) with generated timesteps.
-    """
-    if "type" not in dist_config:
-        raise ValueError("dist_config should have a 'type' key specifying the distribution type.")
-    
-    dist_type = dist_config["type"]
-    
-    distribution_map = {
-        "uniform": {
-            "keys": ["min", "max"],
-            "generator": lambda batch_size, config: torch.rand(batch_size, 1, device=device, dtype=dtype) * (config["max"] - config["min"]) + config["min"]
-        },
-        "normal": {
-            "keys": ["mean", "std"],
-            "generator": lambda batch_size, config: torch.randn(batch_size, 1, device=device, dtype=dtype) * config["std"] + config["mean"]
-        },
-    }
-
-    if dist_type not in distribution_map:
-        raise ValueError(f"Unsupported distribution type: {dist_type}. Supported types: {list(distribution_map.keys())}.")
-
-    def validate_config(config, required_keys):
-        missing_keys = [key for key in required_keys if key not in config]
-        if missing_keys:
-            raise ValueError(f"Missing keys in dist_config for {dist_type} distribution: {missing_keys}")
-
-    required_keys = distribution_map[dist_type]["keys"]
-    validate_config(dist_config, required_keys)
-    generator_func = distribution_map[dist_type]["generator"]
-    return generator_func(batch_size, dist_config)
-
-
 class BaseSolutionMap(BaseLitModel):
     """Base solution map model."""
 
@@ -72,7 +30,6 @@ class BaseSolutionMap(BaseLitModel):
             loss_hparams: DictConfig = None,
             metric_hparams: DictConfig = None,
             use_dimensionless: bool = True,
-            use_dimensionless_for_loss: bool = True,
             **kwargs
         ) -> None:
         super(BaseSolutionMap, self).__init__(**kwargs)
@@ -90,7 +47,7 @@ class BaseSolutionMap(BaseLitModel):
         self.use_dimensionless = use_dimensionless
         if self.use_dimensionless:
             self._validate_nondim_methods()
-        
+
     def extra_repr(self):
         return f"problem: {self.problem}\nuse_dimensionless: {self.use_dimensionless}"
     
@@ -148,38 +105,99 @@ class BaseSolutionMap(BaseLitModel):
         return self.model_step(batch, batch_idx, "test")
     
     def predict_step(self, batch, batch_idx, sequence_len=2):
-        u0, t, _, _ = self._unpack_batch(batch)
+        u0, t, _, _, _ = self._unpack_batch(batch)
         pred_seq = self.predict_sequence(u0, t, sequence_len)
         batch["pred_seq"] = pred_seq
         return batch
     
     def model_step(self, batch: dict, batch_idx: int, stage: str = None):
         # unpack batch
-        u0, t, true_seq, u0_unsup = self._unpack_batch(batch)
-
-        # predict
-        pred_seq = self.predict_sequence(u0, t, len(self.seq_weights))
+        u0, t, true_seq, u0_unsup, t_unsup = self._unpack_batch(batch)
 
         # initialize integrators if needed
         self._ensure_integrators_initialized()
 
-        # compute losses
-        sup_losses = self._compute_supervised_losses(pred_seq, true_seq, self.loss_hparams, self.loss_integrators)
-        unsup_losses = self._compute_unsupervised_losses(u0_unsup, self.loss_hparams, self.loss_integrators)
-        loss = self._compute_total_loss(sup_losses, unsup_losses)
+        # generate collocation points for unsupervised losses
+        generator = CollocationPointsGenerator(self.device, self.dtype, self.problem.random_states)
+        collocation_points = generator.generate_collocation_points(self.loss_hparams, u0_unsup, t_unsup)
 
+        # initialize metrics and prediction container
+        metrics = {}
+        pred_seq = None
+        
+        if self.automatic_optimization:  # lightning handles optimization
+            
+            # forward pass
+            pred_seq = self.predict_sequence(u0, t, len(self.seq_weights))
+
+            # compute losses
+            sup_losses = self._compute_supervised_losses(pred_seq, true_seq, self.loss_hparams, self.loss_integrators)
+            unsup_losses = self._compute_unsupervised_losses(collocation_points, self.loss_hparams, self.loss_integrators)
+            loss = self._compute_total_loss(sup_losses, unsup_losses)
+                
+            # log losses 
+            metrics.update({"loss": loss.detach()})
+            metrics.update(self._prepare_metrics(sup_losses, suffix="_loss"))
+            metrics.update(self._prepare_metrics(unsup_losses, suffix="_loss"))
+
+        else:  # manual optimization (required for L-BFGS)
+            
+            # get optimizer
+            opt = self.optimizers()
+            
+            # define loss computation closure
+            def closure(backward=True):
+                nonlocal pred_seq  # allow modification of outer scope variable
+
+                # zero grad
+                opt.zero_grad()
+
+                # forward pass
+                pred_seq = self.predict_sequence(u0, t, len(self.seq_weights))
+
+                # compute losses
+                sup_losses = self._compute_supervised_losses(pred_seq, true_seq, self.loss_hparams, self.loss_integrators)
+                unsup_losses = self._compute_unsupervised_losses(collocation_points, self.loss_hparams, self.loss_integrators)
+                loss = self._compute_total_loss(sup_losses, unsup_losses)
+                
+                # log losses 
+                metrics.update({"loss": loss.detach()})
+                metrics.update(self._prepare_metrics(sup_losses, suffix="_loss"))
+                metrics.update(self._prepare_metrics(unsup_losses, suffix="_loss"))
+
+                # backward pass if needed
+                if backward:
+                    self.manual_backward(loss)
+
+                return loss
+            
+            # execute optimization step or forward pass
+            if stage == "train":
+                loss = opt.step(closure)
+            else:
+                loss = closure(backward=False)
+            
         # compute metrics
         fitting_metrics = self._compute_fitting_metrics(pred_seq, true_seq)
-        unsup_metrics = self._compute_unsupervised_losses(u0, self.metric_hparams, self.metric_integrators)
-
-        # log losses and metrics
-        metrics = {"loss": loss.detach()}
-        metrics.update(self._prepare_metrics(sup_losses, suffix="_loss"))
-        metrics.update(self._prepare_metrics(unsup_losses, suffix="_loss"))
+        collocation_points = generator.generate_collocation_points(self.metric_hparams, u0_unsup, t_unsup)
+        unsup_metrics = self._compute_unsupervised_losses(collocation_points, self.metric_hparams, self.metric_integrators)
+        
+        # log metrics
         metrics.update(self._prepare_metrics(fitting_metrics))
         metrics.update(self._prepare_metrics(unsup_metrics, suffix="_err"))
         batch_size = len(u0)
         self._log_step(metrics, stage, loss, batch_size)
+
+        if not self.automatic_optimization:  # manually perform scheduler step during training
+            if stage == "train":
+                if self.trainer.lr_scheduler_configs:
+                    config = self.trainer.lr_scheduler_configs[0]
+                    sch = config.scheduler
+                    if config.interval == "step" or (config.interval == "epoch" and self.trainer.is_last_batch):
+                        if isinstance(sch, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                            sch.step(self.trainer.callback_metrics["step_loss"])
+                        else:
+                            sch.step()
 
         return {"loss": loss, "batch_size": batch_size, "metrics": metrics}
         
@@ -189,12 +207,14 @@ class BaseSolutionMap(BaseLitModel):
             t = batch["supervised"]["Dt"]
             true_seq = batch["supervised"]["target_seq"]
             u0_unsup = batch["unsupervised"]["input"]
+            t_unsup = batch["unsupervised"]["Dt"]
         else:
             u0 = batch["input"]
             t = batch["Dt"]
             true_seq = batch["target_seq"]
-            u0_unsup = None
-        return u0, t, true_seq, u0_unsup
+            u0_unsup = batch["input"]
+            t_unsup = batch["Dt"]
+        return u0, t, true_seq, u0_unsup, t_unsup
     
     def _ensure_integrators_initialized(self):
         if self.loss_integrators is None:
@@ -233,7 +253,8 @@ class BaseSolutionMap(BaseLitModel):
                     losses[f"data_misfit_step{k}"] = loss_per_step
         return losses
 
-    def _compute_unsupervised_losses(self, u0: torch.Tensor, hparams: DictConfig, integrators: dict, reduction: str = "mean") -> Dict[str, torch.Tensor]:
+    def _compute_unsupervised_losses(self, collocation_points: Dict[str, CollocationPoints], hparams: DictConfig, 
+                                     integrators: dict, reduction: str = "mean") -> Dict[str, torch.Tensor]:
         LOSS_FN_DICT = {
             "numerical_residual": self._calc_numerical_residual_error,
             "residual": self._calc_residual_error,
@@ -245,30 +266,18 @@ class BaseSolutionMap(BaseLitModel):
             "reversibility": self._calc_reversibiliy_error,
         }
 
-        def prepare_u0(u0, batch_size):
-            if u0 is None:
-                if batch_size is None:
-                    raise ValueError("Either u0 or batch_size should be provided.")
-                return self._prepare_random_states(batch_size)
-            return u0 
-        
         losses = {}
         for loss_name, loss_fn in LOSS_FN_DICT.items():
             if loss_name in hparams:
+                points = collocation_points[loss_name]
                 params = hparams[loss_name]
-                if loss_name in {"additive", "commutative"}:
-                    u0_ = prepare_u0(u0, params.get("batch_size", None))
-                    s = self._prepare_random_timesteps(u0_.shape[0], params["s_dist"])
-                    t = self._prepare_random_timesteps(u0_.shape[0], params["t_dist"])
-                    losses[loss_name] = loss_fn(u0_, s, t, reduction)
-                elif loss_name in {"numerical_residual", "residual", "additive_vv", "commutative_vv", "dyadic", "reversibility"}:
-                    u0_ = prepare_u0(u0, params.get("batch_size", None))
-                    t = self._prepare_random_timesteps(u0_.shape[0], params["t_dist"])
-                    if loss_name in {"numerical_residual", "additive_vv", "commutative_vv"}:
-                        losses[loss_name] = loss_fn(u0_, t, integrators[loss_name], reduction)
-                    else:
-                        losses[loss_name] = loss_fn(u0_, t, reduction)
-
+                use_mse = params.get("use_mse", True)
+                if loss_name in {"additsive", "commutative"}:
+                    losses[loss_name] = loss_fn(points.u0, points.s, points.t, reduction, use_mse)
+                elif loss_name in {"numerical_residual", "additive_vv", "commutative_vv"}:
+                    losses[loss_name] = loss_fn(points.u0, points.t, integrators[loss_name], reduction, use_mse)
+                else:  # residual, dyadic, reversibility
+                    losses[loss_name] = loss_fn(points.u0, points.t, reduction, use_mse)  
         return losses
     
     def _compute_total_loss(self, sup_losses: Dict[str, torch.Tensor], unsup_losses: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -297,12 +306,6 @@ class BaseSolutionMap(BaseLitModel):
         elif stage == "test":
             self.test_step_outputs.append({"batch_size": batch_size, "metrics": metrics})
 
-    def _prepare_random_states(self, batch_size: int) -> torch.Tensor:
-        return self.problem.random_states(batch_size).to(self.device).to(self.dtype)
-
-    def _prepare_random_timesteps(self, batch_size: int, dist_config: DictConfig) -> torch.Tensor:
-        return prepare_random_timesteps(batch_size, dist_config, self.device, self.dtype)
-
     def _calc_data_misfit_error(self, pred_seq: List[torch.Tensor], true_seq: List[torch.Tensor], reduction: str) -> tuple:
         errors = [None for _ in range(len(self.seq_weights))]
         for k, weight in enumerate(self.seq_weights):
@@ -316,33 +319,42 @@ class BaseSolutionMap(BaseLitModel):
         weighted_sum = stacked_errors.sum(dim=0) / sum(self.seq_weights)
         return weighted_sum, errors
 
-    def _calc_residual_error(self, u0: torch.Tensor, t: torch.Tensor, reduction: str) -> torch.Tensor:
+    def _calc_residual_error(self, u0: torch.Tensor, t: torch.Tensor, reduction: str, use_mse: bool) -> torch.Tensor:
         du = self.problem.compute_du(self(u0, t))
         du_pred = torch.func.vmap(torch.func.jacrev(self, argnums=1))(u0, t)  # (bs, 2*dof, 1)
         du_pred = du_pred.squeeze(-1)  # (bs, 2*dof)
-        return self._calc_error_dudw(du_pred, du, reduction)
+        return self._calc_error_dudw(du_pred, du, reduction, use_mse)
 
-    def _calc_numerical_residual_error(self, u0: torch.Tensor, t: torch.Tensor, integrator: Integrator, reduction: str) -> torch.Tensor:
-        residual = integrator.compute_residual(self(u0, t), self(u0, t+integrator.h), t)
-        return self._calc_error_uw(residual, torch.zeros_like(residual), reduction, use_mse=True)
+    def _calc_numerical_residual_error(
+            self, u0: torch.Tensor, t: torch.Tensor, integrator: Integrator, reduction: str, use_mse: bool) -> torch.Tensor:
+        # residual = integrator.compute_residual(self(u0, t), self(u0, t+integrator.h), t)
+        # residual = residual / integrator.h
+        # return self._calc_error_uw(residual, torch.zeros_like(residual), reduction, use_mse)
+        u_n_plus_1, pred_u_n_plus_1 = integrator.compute_residual(self(u0, t), self(u0, t+integrator.h), t)
+        return self._calc_error_uw(u_n_plus_1, pred_u_n_plus_1, reduction, use_mse) / (integrator.h ** 2)
+        # return self._calc_error_dudw(u_n_plus_1/integrator.h, pred_u_n_plus_1/integrator.h, reduction, use_mse)
     
-    def _calc_commutative_error(self, u0: torch.Tensor, s: torch.Tensor, t: torch.Tensor, reduction: str) -> torch.Tensor:
-        return self._calc_error_uw(self(self(u0, t), s), self(self(u0, s), t), reduction, use_mse=True)
+    def _calc_commutative_error(
+            self, u0: torch.Tensor, s: torch.Tensor, t: torch.Tensor, reduction: str, use_mse: bool) -> torch.Tensor:
+        return self._calc_error_uw(self(self(u0, t), s), self(self(u0, s), t), reduction, use_mse)
     
-    def _calc_additive_error(self, u0: torch.Tensor, s: torch.Tensor, t: torch.Tensor, reduction: str) -> torch.Tensor:
-        return self._calc_error_uw(self(self(u0, t), s), self(u0, s+t), reduction, use_mse=True)
+    def _calc_additive_error(
+            self, u0: torch.Tensor, s: torch.Tensor, t: torch.Tensor, reduction: str, use_mse: bool) -> torch.Tensor:
+        return self._calc_error_uw(self(self(u0, t), s), self(u0, s+t), reduction, use_mse)
     
-    def _calc_commutative_vv_error(self, u0: torch.Tensor, t: torch.Tensor, integrator: Integrator, reduction: str) -> torch.Tensor:
-        return self._calc_error_uw(integrator(self(u0, t)), self(integrator(u0), t), reduction, use_mse=True)
+    def _calc_commutative_vv_error(
+            self, u0: torch.Tensor, t: torch.Tensor, integrator: Integrator, reduction: str, use_mse: bool) -> torch.Tensor:
+        return self._calc_error_uw(integrator(self(u0, t)), self(integrator(u0), t), reduction, use_mse)
     
-    def _calc_additive_vv_error(self, u0: torch.Tensor, t: torch.Tensor, integrator: Integrator, reduction: str) -> torch.Tensor:
-        return self._calc_error_uw(integrator(self(u0, t)), self(u0, t+integrator.T), reduction, use_mse=True)
+    def _calc_additive_vv_error(
+            self, u0: torch.Tensor, t: torch.Tensor, integrator: Integrator, reduction: str, use_mse: bool) -> torch.Tensor:
+        return self._calc_error_uw(integrator(self(u0, t)), self(u0, t+integrator.T), reduction, use_mse)
 
-    def _calc_dyadic_error(self, u0: torch.Tensor, t: torch.Tensor, reduction: str) -> torch.Tensor:
-        return self._calc_error_uw(self(self(u0, t), t), self(u0, 2*t), reduction, use_mse=True)
+    def _calc_dyadic_error(self, u0: torch.Tensor, t: torch.Tensor, reduction: str, use_mse: bool) -> torch.Tensor:
+        return self._calc_error_uw(self(self(u0, t), t), self(u0, 2*t), reduction, use_mse)
 
-    def _calc_reversibiliy_error(self, u0: torch.Tensor, t: torch.Tensor, reduction: str) -> torch.Tensor:
-        return self._calc_error_uw(self(self(u0, t), -t), u0, reduction, use_mse=True)
+    def _calc_reversibiliy_error(self, u0: torch.Tensor, t: torch.Tensor, reduction: str, use_mse: bool) -> torch.Tensor:
+        return self._calc_error_uw(self(self(u0, t), -t), u0, reduction, use_mse)
 
     def _calc_error_uw(self, u: torch.Tensor, w: torch.Tensor, reduction: str, use_mse: bool) -> torch.Tensor:
         u, w = self._apply_nondim(u), self._apply_nondim(w)
@@ -359,6 +371,9 @@ class BaseSolutionMap(BaseLitModel):
             else:
                 raise ValueError(f"Unsupported reduction: {reduction}")
     
-    def _calc_error_dudw(self, du: torch.Tensor, dw: torch.Tensor, reduction: str) -> torch.Tensor:
+    def _calc_error_dudw(self, du: torch.Tensor, dw: torch.Tensor, reduction: str, use_mse: bool) -> torch.Tensor:
         du, dw = self._apply_nondim(du, deriv_mode=True), self._apply_nondim(dw, deriv_mode=True)
-        return nn.functional.mse_loss(du, dw, reduction=reduction)
+        if use_mse:
+            return nn.functional.mse_loss(du, dw, reduction=reduction)
+        else:
+            raise NotImplementedError("Non-MSE loss is not supported for derivative errors.")
