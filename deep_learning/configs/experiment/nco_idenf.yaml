@@ -1,7 +1,7 @@
 # @package _global_
 
 # to execute this experiment run:
-# python train.py experiment=nco_identityenforced
+# python train.py experiment=nco_idenf
 
 defaults:
   - override /datamodule: default
@@ -21,34 +21,40 @@ defaults:
     - metrics_logger
     - tqdm_progress_bar
     - predict_and_plot_trajectory
-    - early_stopping
+    # - early_stopping
     - monitor_parameters
+    # - time_distribution_scheduler
+
+seed: 42
 
 datamodule:
   train:
-    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e2_min_Dt=-1e2/train
-    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e1_min_Dt=-1e1/train
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e2_min_Dt=-1e2/train
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e1_min_Dt=-1e1/train
     # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version23/max_Dt=1e1_min_Dt=-1e1
     sequence_len: 2
     downsample_factor: 1.0
-    Dt_range: [19., 21.]
+    Dt_range: [-10, 10]
     exclude: false
+    # dtype: float64
   test:
-    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e2_min_Dt=-1e2/test
-    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e1_min_Dt=-1e1/test
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e2_min_Dt=-1e2/test
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e1_min_Dt=-1e1/test
     sequence_len: 2
     downsample_factor: 1.0
-    Dt_range: [19., 21.]
+    Dt_range: [-10, 10]
     exclude: false
+    # dtype: float64
   batch_size: 100
 
 trainer:
   max_epochs: -1
   max_steps: 1000000
   min_steps: 500000
-  gradient_clip_val: 2.0
-  gradient_clip_algorithm: value
+  # gradient_clip_val: 2.0
+  # gradient_clip_algorithm: value
   # log_every_n_steps: 4
+  # precision: 64-true
 
 module:
   loss_hparams:
@@ -63,11 +69,23 @@ module:
         nsteps: 1
       t_dist:
         # type: uniform
-        # min: -20.
-        # max: 20.
+        # min: -5.
+        # max: 5.
         type: normal
         mean: 0.
-        std: 7.5
+        std: 5.
+      use_mse: false
+    # residual: 
+    #   strength: 1.0
+    #   batch_size: 2000
+    #   t_dist:
+    #     # type: uniform
+    #     # min: -5.
+    #     # max: 5.
+    #     type: normal
+    #     mean: 0.
+    #     std: 5.
+    #   use_mse: true
     # dyadic:
     #   strength: 0.1
     #   batch_size: 2000
@@ -87,8 +105,11 @@ module:
     #     min: -10.
     #     max: 10.
   
+  # loss:
+  #   weight: [0.01, 1., 0.01, 1.]
+  
   optimizer:
-    lr: 1e-3
+    lr: 2e-4
     # weight_decay: 0.0
   
   scheduler:
@@ -106,15 +127,15 @@ module:
   multiplier_activation:
     _target_: torch.nn.Tanh
 
-  temporal_encoding:
-    _target_: modules.variable_timestep.Time2VecEncoding
-    output_dim: 5
-    min_period: 1.0
-    max_period: 1000.0
+  # temporal_encoding:
+  #   _target_: modules.variable_timestep.Time2VecEncoding
+  #   output_dim: 5
+  #   min_period: 1.0
+  #   max_period: 1000.0
 
   network:
     # layer_sizes: [5, 500, 500, 500, 500, 4]
-    input_dim: 9
+    input_dim: 5
     output_dim: 4
     hidden_dim: 1000
     n_hidden_layers: 6
@@ -125,23 +146,47 @@ module:
 callbacks:
   predict_and_plot_trajectory:
     nsteps: 1000
-    Dt: 20.0
+    Dt: 5.0
     save_predictions: false
     log_freq: 10
   
   monitor_parameters:
-    param_names: ['scale', 'mult_w', 'temp_enc.log_frequencies']
-    # param_names: ['scale', 'mult_w']
+    # param_names: ['scale', 'mult_w', 'temp_enc.log_frequencies']
+    param_names: ['scale', 'mult_w']
     every_n_epochs: 5
   
   val_checkpoint:
     save_top_k: 3
+    save_weights_only: true
     # every_n_epochs: 5
 
-  early_stopping:
-    monitor: val/loss
-    patience: 20
+  last_checkpoint:
+    save_weights_only: true
+
+  # early_stopping:
+  #   monitor: val/loss
+  #   patience: 20
   
+  # time_distribution_scheduler:
+  #   schedule_keys: [20000, 40000, 60000, 80000, 100000]
+  #   schedule_values: 
+  #     - type: uniform
+  #       min: -10.
+  #       max: 10.
+  #     - type: uniform
+  #       min: -20.
+  #       max: 20.
+  #     - type: uniform
+  #       min: -30.
+  #       max: 30.
+  #     - type: uniform
+  #       min: -40.
+  #       max: 40.
+  #     - type: uniform
+  #       min: -50.
+  #       max: 50.
+  #   by_epoch: false
+
   # integrator_stepsize_scheduler:
   #   base_stepsize: 0.1
   #   schedule_keys: [50000, 100000, 150000, 200000, 250000]
@@ -155,4 +200,4 @@ callbacks:
 
 loggers:
   wandb:
-    group: nco_t0centered
+    group: nco

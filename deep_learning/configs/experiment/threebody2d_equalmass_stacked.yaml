@@ -1,0 +1,195 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=threebody2d_equalmass_stacked
+
+defaults:
+  - override /datamodule: default
+  - override /module: stacked
+  - override /module/problem: threebody2d
+  - override /module/loss: mse
+  - override /module/optimizer: adamw
+  - override /module/scheduler: reduceonplateau
+  - override /module/network@module.net_F: modmlp
+  - override /trainer: gpu
+  - override /callbacks: 
+    - hparams_updater
+    - val_checkpoint
+    - latest_checkpoint
+    - lr_monitor
+    - fixed_seq_weights
+    # - seq_len_scheduler
+    - metrics_logger
+    - tqdm_progress_bar
+    - predict_and_plot_trajectory
+    # - early_stopping
+    - monitor_parameters
+
+
+datamodule:
+  train:
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version1/max_Dt=5e0_min_Dt=-5e0_filtered/train
+    # Dt: 0.125
+    Dt_range: [-5, 5]
+    sequence_len: 2
+    downsample_factor: 1.0
+  test:
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version1/max_Dt=5e0_min_Dt=-5e0_filtered/test
+    # Dt: 0.125
+    Dt_range: [-5, 5]
+    sequence_len: 2
+    downsample_factor: 1.0
+  batch_size: 100
+  num_workers: 0
+
+  # supervised:
+  #   train:
+  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d/version2/max_Dt=1e1_min_Dt=-1e1_filtered/train
+  #     # Dt: 0.125
+  #     Dt_range: [-10.0, 10.0]
+  #     sequence_len: 2
+  #     downsample_factor: 1.0
+  #   test:
+  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d/version2/max_Dt=1e1_min_Dt=-1e1_filtered/test
+  #     # Dt: 0.125
+  #     Dt_range: [-10.0, 10.0]
+  #     sequence_len: 2
+  #     downsample_factor: 1.0
+  #   batch_size: 100
+
+  # unsupervised:
+  #   train:
+  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d/version2/max_Dt=1e1_min_Dt=-1e1_filtered/train
+  #     # Dt: 0.125
+  #     Dt_range: [-10.0, 10.0]
+  #     sequence_len: 2
+  #     downsample_factor: 1.0
+  #   test:
+  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d/version2/max_Dt=1e1_min_Dt=-1e1_filtered/test
+  #     # Dt: 0.125
+  #     Dt_range: [-10.0, 10.0]
+  #     sequence_len: 2
+  #     downsample_factor: 1.0
+  #   batch_size: 100
+  
+  # num_workers: 0
+  # pin_memory: false
+
+trainer:
+  # max_epochs: -1
+  max_steps: 1000000
+  min_steps: 500000
+  # min_epochs: 200
+  gradient_clip_val: 2.0
+  gradient_clip_algorithm: value
+  # log_every_n_steps: 4
+
+module:
+  problem: 
+    m1: 1.0
+    m2: 1.0
+    m3: 1.0
+
+  use_dimensionless: false
+
+  time_points: [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+
+  loss_hparams:
+    # data_misfit:
+    #   strength: 1.0
+    # residual:
+    #   strength: 1.0
+    #   batch_size: 2000 
+    #   t_dist:
+    #     type: normal
+    #     mean: 0.0
+    #     std: 5.0
+    #   use_mse: true
+    numerical_residual:
+      strength: 1.0
+      batch_size: 1000
+      integrator: 
+        method: VelocityVerlet
+        stepsize: 0.1
+        nsteps: 1
+      t_dist:
+        type: uniform
+        min: 0.0
+        max: 2.0
+        # type: normal
+        # mean: 0.0
+        # std: 1.0
+      use_mse: true
+
+  # loss:
+  #   weight: [1e2, 1e2, 1e0, 1e0, 1e-3, 1e-3, 1e0, 1e0, 1e0, 1e0, 1e0, 1e0]
+  #   # weight: [1e4, 1e4, 1e0, 1e0, 1e0, 1e0, 1e0, 1e0, 1e-4, 1e-4, 1e-4, 1e-4]
+
+  optimizer:
+    lr: 1e-4
+  
+  scheduler:
+    scheduler:
+      # total_steps: 1000000
+      # steps_per_epoch: 1600
+      # pct_start: 0.1
+      factor: 0.9
+      # patience: 8
+      patience: 5000
+    
+    extras:
+      monitor: step_loss
+      interval: step
+
+  multiplier_activation:
+    _target_: torch.nn.Tanh
+
+  # temporal_encoding:
+  #   _target_: modules.variable_timestep.Time2VecEncoding
+  #   output_dim: 5
+  #   min_period: 1.0
+  #   max_period: 1000.0
+
+  # feature_normalization:
+  #   _target_: modules.variable_timestep.FeatureNormalization
+  #   means: [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.]
+  #   stds:  [1., 1., 1.e-4, 1., 1., 1.e-4, 1.e-3, 1.e-3, 1.e-4, 1., 1., 1.e-4, 100., 100., 0.01, 100, 100, 0.5]
+
+  net_F:
+    input_dim: 13 
+    output_dim: 12
+    hidden_dim: 1000
+    n_hidden_layers: 6
+    # n_henon_layers: 16
+    # activation:
+    #   _target_: torch.nn.Tanh
+
+
+callbacks:
+  fixed_seq_weights:
+    _target_: callbacks.sequence_weights.FixedSequenceWeights
+    # weights: [0., 1., 1., 1., 0., 0.]
+    weights: [0., 1.]
+  # seq_len_scheduler:
+    # weights: [1., 1., 1., 1., 1., 1.]
+    # milestones: [10, 20, 50, 100, 200]
+    # init_len: 1s
+
+  predict_and_plot_trajectory:
+    nsteps: 1000
+    Dt: 1.0
+    save_predictions: false
+    log_freq: 10
+
+  monitor_parameters:
+    # param_names: ['scale', 'mult_w', 'temp_enc.log_frequencies']
+    param_names: ['scale', 'mult_w']
+    every_n_epochs: 5
+  
+  early_stopping:
+    monitor: val/loss
+    patience: 20
+
+loggers:
+  wandb:
+    group: threebody2d-equalmass

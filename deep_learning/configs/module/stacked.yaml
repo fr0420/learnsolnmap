@@ -1,0 +1,19 @@
+_target_: modules.variable_timestep.StackedSolutionMap
+
+defaults:
+  - problem: fpu
+  - optimizer: adamw
+  - scheduler: 1cycle
+  - loss: energynormsquared
+  - network: modmlp
+  - _self_
+
+time_points: [0.0, 5.0, 10.0]
+
+multiplier_activation:
+  _target_: torch.nn.Tanh
+
+loss_hparams: null
+use_dimensionless: true
+
+weight_init: xavier_uniform

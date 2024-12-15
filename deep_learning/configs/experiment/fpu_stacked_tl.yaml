@@ -1,0 +1,207 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=fpu_stacked_tl
+
+defaults:
+  - override /datamodule: combined
+  - override /module: stacked
+  - override /module/problem: fpu
+  - override /module/loss: anchoredenergynormsquared
+  - override /module/optimizer: adamw
+  - override /module/scheduler: customcyclic
+  - override /module/network: modmlp
+  - override /trainer: gpu
+  - override /callbacks: 
+    - hparams_updater
+    # - integrator_stepsize_scheduler
+    - val_checkpoint
+    - latest_checkpoint
+    - lr_monitor
+    - metrics_logger
+    - tqdm_progress_bar
+    - predict_and_plot_trajectory
+    # - early_stopping
+    - monitor_parameters
+    - time_distribution_scheduler
+
+datamodule:
+  # train:
+  #   data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/train
+  #   # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/train
+  #   # Dt: 0.125
+  #   Dt_range: [0., 0.125]
+  #   sequence_len: 2
+  #   downsample_factor: 1.0
+  # test:
+  #   data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/test
+  #   # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/test
+  #   # Dt: 0.125
+  #   Dt_range: [0., 0.125]
+  #   sequence_len: 2
+  #   downsample_factor: 1.0
+  # batch_size: 100
+
+  supervised:
+    train:
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/train
+      # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/train
+      # Dt: 0.125
+      Dt_range: [0, 0.125]
+      sequence_len: 2
+      downsample_factor: 1.0
+    test:
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/test
+      # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/test
+      # Dt: 0.125
+      Dt_range: [0, 0.125]
+      sequence_len: 2
+      downsample_factor: 1.0
+    batch_size: 100
+  unsupervised:
+    train:
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/train
+      # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/train
+      # Dt: 0.125
+      Dt_range: [-0.125, 0.125]
+      # Dt_range: [-0.0625, 0.0625]
+      sequence_len: 1
+      downsample_factor: 1.0
+    test:
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/test
+      # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/test
+      # Dt: 0.125
+      Dt_range: [-0.125, 0.125]
+      # Dt_range: [-0.0625, 0.0625]
+      sequence_len: 1
+      downsample_factor: 1.0
+    batch_size: 2000
+
+
+trainer:
+  max_epochs: -1
+  max_steps: 1000000
+  min_steps: 500000
+  gradient_clip_val: 2.0
+  gradient_clip_algorithm: value
+  # log_every_n_steps: 4
+
+module:
+  _target_: modules.variable_timestep.StackedSolutionMap.from_IdentityEnforcedSolutionMap
+  ckpt_path: /workspace/projects_rui/learnsolnmap/deep_learning/logs/train/runs/20241121-202638_im8typ/checkpoints/latest-epoch01249.ckpt
+  
+  use_dimensionless: false
+
+  problem:
+    omega: 50
+
+  time_points: [0.0, 0.125, 0.25, 0.375, 0.5]
+  # time_points: [0.0, 0.03125, 0.0625, 0.09375, 0.125]
+  loss_hparams:
+    # data_misfit: 
+    #   strength: 1.0
+    numerical_residual:
+      strength: 1.0
+      batch_size: 2000
+      integrator: 
+        method: VelocityVerlet
+        stepsize: 1e-3
+        nsteps: 1
+      t_dist:
+        type: uniform
+        min: 0.
+        max: 0.25
+        # type: normal
+        # mean: 0.
+        # std: 7.5
+      use_mse: false
+    # dyadic:
+    #   strength: 0.1
+    #   batch_size: 2000
+    #   t_dist:
+    #     type: uniform
+    #     min: -10.
+    #     max: 10.
+    # commutative:
+    #   strength: 0.1
+    #   batch_size: 2000
+    #   t_dist:
+    #     type: uniform
+    #     min: -10.
+    #     max: 10.
+    #   s_dist:
+    #     type: uniform
+    #     min: -10.
+    #     max: 10.
+  
+  optimizer:
+    lr: 1e-4
+    # weight_decay: 0.0
+  
+  scheduler:
+    scheduler:
+      # total_steps: ${trainer.max_steps}
+      # pct_start: 0.1
+      # factor: 0.9
+      # patience: 8
+      # patience: 5000
+      steps_per_cycle: 100000
+      scale_fn_factor: 0.8
+    extras:
+      # monitor: step_loss
+      interval: step
+
+callbacks:
+  predict_and_plot_trajectory:
+    nsteps: 1000
+    Dt: 0.125
+    save_predictions: false
+    log_freq: 10
+  
+  monitor_parameters:
+    # param_names: ['scale', 'mult_w', 'temp_enc.log_frequencies']
+    param_names: ['mult_w']
+    every_n_epochs: 5
+  
+  val_checkpoint:
+    save_top_k: 3
+    # every_n_epochs: 5
+
+  early_stopping:
+    monitor: val/loss
+    patience: 20
+  
+  time_distribution_scheduler:
+    schedule_keys: [100000, 200000]
+    schedule_values: 
+      # - type: uniform
+      #   min: 0.
+      #   max: 0.25
+      - type: uniform
+        min: 0.
+        max: 0.375
+      - type: uniform
+        min: 0.
+        max: 0.5
+      # - type: uniform
+      #   min: 0.
+      #   max: 25.
+      # - type: uniform
+      #   min: 0.
+      #   max: 30.
+    by_epoch: false
+
+  # integrator_stepsize_scheduler:
+  #   base_stepsize: 0.1
+  #   schedule_keys: [50000, 100000, 150000, 200000, 250000]
+  #   schedule_values: [0.8, 0.6, 0.4, 0.2, 0.1]
+  #   by_epoch: false
+  #   base_batch_size: 2000
+  #   adjust_batch_size: true
+
+  hparams_updater:
+    metric_hparams:
+
+loggers:
+  wandb:
+    group: fpu

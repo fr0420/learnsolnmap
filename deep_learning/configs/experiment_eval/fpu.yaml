@@ -1,0 +1,65 @@
+# @package _global_
+
+# to execute this experiment run:
+# python eval.py experiment_eval=fpu
+
+defaults:
+  - override /datamodule: default
+  - override /trainer: gpu
+  - override /callbacks: 
+    - metrics_logger
+    - hparams_updater
+
+
+trainer:
+  inference_mode: false  # to avoid the model derivatives to be zeroed out
+
+module:
+  # _target_: modules.variable_timestep.StackedSolutionMap
+  _target_: modules.variable_timestep.IdentityEnforcedSolutionMap
+  # _target_: modules.variable_timestep.T0CenteredSolutionMap
+  # _target_: modules.variable_timestep.FixedStepSolutionMap
+datamodule:
+  train:
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/train
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/train
+    Dt: 0.125
+    # Dt_range: [-0.125, 0.125]
+    sequence_len: 2
+    downsample_factor: 1.0
+  test:
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/test
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/test
+    Dt: 0.125
+    # Dt_range: [-0.125, 0.125]
+    sequence_len: 2
+    downsample_factor: 1.0
+  batch_size: 1000
+
+save_test_predictions: false 
+
+predict: true
+# predict_nsteps: 2000
+# predict_Dt: 0.125
+predict_nsteps: [16000, 8000, 4000, 2000, 1600, 1000, 800, 500]
+predict_Dt: [0.015625, 0.03125, 0.0625, 0.125, 0.15625, 0.25, 0.3125, 0.5]
+# predict_nsteps: [2000, 2000, 2000]
+# predict_Dt: [0.125, 0.126, 0.13, ]
+
+
+callbacks:
+    
+  hparams_updater:
+
+    # loss_hparams:
+    #   misfit: 
+    #     strength: 1.0
+    
+    # metric_hparams:
+    #   commutative:
+    #     strength: 1.0
+    #     integrator:
+    #       method: VelocityVerlet
+    #       stepsize: 0.1
+    #       nsteps: 1
+    #     K: 5

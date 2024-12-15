@@ -1,0 +1,97 @@
+# @package _global_
+
+# to execute this experiment run:
+# python eval.py experiment_eval=threebody2d
+
+defaults:
+  - override /datamodule: combined
+  - override /trainer: gpu
+  - override /callbacks: 
+    - metrics_logger
+    - hparams_updater
+
+
+trainer:
+  inference_mode: false  # to avoid the model derivatives to be zeroed out
+
+module:
+  # _target_: modules.variable_timestep.StackedSolutionMap
+  # _target_: modules.variable_timestep.IdentityEnforcedSolutionMap
+  # _target_: modules.variable_timestep.T0CenteredSolutionMap
+  _target_: modules.variable_timestep.FixedStepSolutionMap
+datamodule:
+  # train:
+  #   data_dir: /workspace/projects_rui/learnsolnmap/data1/3body/version3/max_Dt=5e1_min_Dt=-5e1/train
+  #   # Dt: 0.125
+  #   Dt_range: [-50.0, 50.0]
+  #   sequence_len: 2
+  #   downsample_factor: 1.0
+  # test:
+  #   data_dir: /workspace/projects_rui/learnsolnmap/data1/3body/version3/max_Dt=5e1_min_Dt=-5e1/test
+  #   # Dt: 0.125
+  #   Dt_range: [-50.0, 50.0]
+  #   sequence_len: 2
+  #   downsample_factor: 1.0
+  # batch_size: 100
+  # num_workers: 0
+
+  supervised:
+    train:
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d/version1/max_Dt=1e1_min_Dt=-1e1_filtered/train
+      # Dt: 0.125
+      Dt_range: [-10.0, 10.0]
+      sequence_len: 2
+      downsample_factor: 1.0
+    test:
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d/version1/max_Dt=1e1_min_Dt=-1e1_filtered/test
+      # Dt: 0.125
+      Dt_range: [-10.0, 10.0]
+      sequence_len: 2
+      downsample_factor: 1.0
+    batch_size: 100
+
+  unsupervised:
+    train:
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d/version1/max_Dt=1e1_min_Dt=-1e1_filtered/train
+      # Dt: 0.125
+      Dt_range: [-10.0, 10.0]
+      sequence_len: 2
+      downsample_factor: 1.0
+    test:
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d/version1/max_Dt=1e1_min_Dt=-1e1_filtered/test
+      # Dt: 0.125
+      Dt_range: [-10.0, 10.0]
+      sequence_len: 2
+      downsample_factor: 1.0
+    batch_size: 1000
+  
+  num_workers: 0
+  pin_memory: false
+
+save_test_predictions: false 
+
+predict: true
+predict_nsteps: 1000
+predict_Dt: 5.0
+# predict_nsteps: [500, 1000, 2000, 4000, 8000, 8000]
+# predict_Dt: [10., 5., 2.5, 1.25, 0.75, 0.2]
+# predict_nsteps: [8000]
+# predict_Dt: [0.2]
+
+
+callbacks:
+    
+  hparams_updater:
+
+    # loss_hparams:
+    #   misfit: 
+    #     strength: 1.0
+    
+    # metric_hparams:
+    #   commutative:
+    #     strength: 1.0
+    #     integrator:
+    #       method: VelocityVerlet
+    #       stepsize: 0.1
+    #       nsteps: 1
+    #     K: 5

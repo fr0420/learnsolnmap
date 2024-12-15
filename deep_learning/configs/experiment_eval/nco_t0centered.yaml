@@ -1,7 +1,7 @@
 # @package _global_
 
 # to execute this experiment run:
-# python eval.py experiment_eval=nco_var_dt
+# python eval.py experiment_eval=nco_t0centered
 
 defaults:
   - override /datamodule: default
@@ -14,21 +14,23 @@ trainer:
   inference_mode: false  # to avoid the model derivatives to be zeroed out
 
 module:
-  _target_: modules.var_dt_solnmap.VariableDtSolutionMap
+  _target_: modules.variable_timestep.T0CenteredSolutionMap
 
 datamodule:
   train:
-    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e1_min_Dt=-1e1/train
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0/train
     sequence_len: 2
     downsample_factor: 0.2
-    Dt_range: [-4.0, 4.0]
-    exclude: false
+    Dt: 5.0
+    # Dt_range: [-4.0, 4.0]
+    # exclude: false
   test:
-    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e2_min_Dt=-1e2/test
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0/test
     sequence_len: 2
     downsample_factor: 1.
-    Dt_range: [-20., 20.]
-    exclude: false
+    Dt: 5.0
+    # Dt_range: [-20., 20.]
+    # exclude: false
   batch_size: 1000
 
 save_test_predictions: false 
@@ -36,8 +38,12 @@ save_test_predictions: false
 predict: true
 # predict_nsteps: [1000, 1000, 1000, 1250, 1700, 2000, 2500, 5000, 10000, 20000]
 # predict_Dt: [10.2, 11., 10., 8.0, 6.0, 5.0, 4.0, 2.0, 1.0, 0.5]
-predict_nsteps: [1000, 1000, 1000, 1000, 1000]
-predict_Dt: [12., 14., 16., 18., 20.]
+# predict_nsteps: [2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000]
+# predict_Dt: [3., 3.5, 4., 4.5, 5., 5.5,  6., 6.5, 7.]
+# predict_nsteps: [2000, 2000, 2000, 2000]
+# predict_Dt: [4.25, 4.75, 5.25, 5.75]
+predict_nsteps: [2000, 1000]
+predict_Dt: [8.0, 9.0]
 
 callbacks:
   hparams_updater:
@@ -64,27 +70,39 @@ callbacks:
     metric_hparams:
       dynamics:
         t_dist:
-          type: uniform
-          min: -10.
-          max: 10.
+          # type: uniform
+          # min: -10.
+          # max: 10.
+          type: normal
+          mean: 5.0
+          std: 0.5
       commutative: 
         t_dist:
-          type: uniform
-          min: -10.
-          max: 10.
+          # type: uniform
+          # min: -10.
+          # max: 10.
+          type: normal
+          mean: 5.0
+          std: 0.5
         s_dist:
-          type: uniform
-          min: -10.
-          max: 10.
+          # type: uniform
+          # min: -10.
+          # max: 10.
+          type: normal
+          mean: 5.0
+          std: 0.5
       commutative_vv: 
         integrator:
           method: VelocityVerlet
           stepsize: 0.1
           nsteps: 1
         t_dist:
-          type: uniform
-          min: -10.
-          max: 10.
+          # type: uniform
+          # min: -10.
+          # max: 10.
+          type: normal
+          mean: 5.0
+          std: 0.5
       additive: 
         t_dist:
           type: uniform
@@ -100,9 +118,12 @@ callbacks:
           stepsize: 0.1
           nsteps: 1
         t_dist:
-          type: uniform
-          min: -10.
-          max: 10.
+          # type: uniform
+          # min: -10.
+          # max: 10.
+          type: normal
+          mean: 5.0
+          std: 0.5
       dyadic:
         t_dist:
           type: uniform

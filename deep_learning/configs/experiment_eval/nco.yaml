@@ -1,0 +1,69 @@
+# @package _global_
+
+# to execute this experiment run:
+# python eval.py experiment_eval=nco
+
+defaults:
+  - override /datamodule: default
+  - override /trainer: gpu
+  - override /callbacks: 
+    - metrics_logger
+    - hparams_updater
+
+
+trainer:
+  inference_mode: false  # to avoid the model derivatives to be zeroed out
+
+module:
+  # _target_: modules.fixed_timestep.FixedStepSolutionMap
+  # _target_: modules.variable_timestep.StackedSolutionMap
+  _target_: modules.variable_timestep.IdentityEnforcedSolutionMap
+
+datamodule:
+  train:
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0/train
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e2_min_Dt=-1e2/train
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e1_min_Dt=-1e1/train
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version23/max_Dt=1e1_min_Dt=-1e1
+    sequence_len: 2
+    downsample_factor: 1.0
+    # Dt: 5.0
+    Dt_range: [0., 20.]
+    exclude: false
+  test:
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0/test
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e2_min_Dt=-1e2/test
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e1_min_Dt=-1e1/test
+    sequence_len: 2
+    downsample_factor: 1.0
+    # Dt: 5.0
+    Dt_range: [0., 20.]
+    exclude: false
+  batch_size: 1000
+
+save_test_predictions: false 
+
+predict: true
+# predict_nsteps: 2000
+# predict_Dt: 5.0
+# predict_nsteps: [500, 700, 1000, 1250, 1700, 2000, 2500, 5000, 10000, 20000]
+# predict_Dt: [20., 15., 10., 8.0, 6.0, 5.0, 4.0, 2.0, 1.0, 0.5]
+predict_nsteps: [1100, 1300, 3000]
+predict_Dt: [9.0, 7.0, 3.0]
+
+callbacks:
+    
+  hparams_updater:
+
+    # loss_hparams:
+    #   misfit: 
+    #     strength: 1.0
+    
+    # metric_hparams:
+    #   commutative:
+    #     strength: 1.0
+    #     integrator:
+    #       method: VelocityVerlet
+    #       stepsize: 0.1
+    #       nsteps: 1
+    #     K: 5
