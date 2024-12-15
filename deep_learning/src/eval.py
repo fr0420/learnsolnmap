@@ -13,6 +13,7 @@ from utils.utils import (
     get_run_name,
     get_run_id
 )
+from utils.checkpoint_utils import load_model_from_ckpt
 from utils.saving_utils import save_test_metrics, save_test_predictions
 from utils.benchmark_utils import time_forward
 from callbacks.predict_trajectory import predict_and_plot, save_predictions, save_figures
@@ -48,8 +49,16 @@ def main(cfg: DictConfig) -> pl.Trainer:
 
     # Load lightning model
     logger.info(f"Loading lightning model <{cfg.module._target_}> from checkpoint {cfg.ckpt_path}")
+    # load_model_from_ckpt(cfg.ckpt_path, model_name=cfg.module._target_)
     checkpoint = torch.load(cfg.ckpt_path, map_location="cpu")
-    model: pl.LightningModule = hydra.utils.instantiate(cfg.module, **checkpoint["hyper_parameters"], _recursive_=False)
+    
+    # Temporary fix for the loss function in hyperparameters
+    hyper_params = checkpoint.get("hyper_parameters", {})
+    loss_target = hyper_params["loss"]["_target_"]
+    if loss_target.startswith("losses") and loss_target.split(".")[1] != "losses":
+        hyper_params["loss"]["_target_"] = "losses." + hyper_params["loss"]["_target_"]
+
+    model: pl.LightningModule = hydra.utils.instantiate(cfg.module, **hyper_params, _recursive_=False)
     if datamodule.get_dtype() == "float64":
         model = model.double()
     model.load_state_dict(checkpoint["state_dict"], strict=False)

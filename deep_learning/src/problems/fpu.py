@@ -42,13 +42,11 @@ class FPU(SeparableHamiltonianSystem):
     
     def compute_K(self, p: torch.Tensor) -> torch.Tensor:
         """Compute kinetic energy."""
-        # assert shape of p
         K = 0.5 * torch.sum(p**2, dim=-1)
         return K
 
     def compute_ddx(self, q: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         """Compute second derivative of x with respect to time (force/mass)."""
-        # assert shape of q 
         dq_stiff = q[..., 1::2] - q[..., ::2]
         dq_soft = torch.stack((q[..., 0], q[..., 2]-q[..., 1], q[..., 4]-q[..., 3], -q[..., 5]), dim=-1)
         dq_soft_cubic = dq_soft**3
@@ -61,7 +59,6 @@ class FPU(SeparableHamiltonianSystem):
     
     def transform_to_energy_components(self, u: torch.Tensor) -> torch.Tensor:
         """Transform canonical variables to variables whose squared l2-norm = Hamiltonian."""
-        # assert shape of p, q
         p, q = u.chunk(2, dim=-1)
         dq_stiff = 0.5 * self.omega * (q[..., 1::2] - q[..., ::2])
         dq_soft = torch.stack((q[..., 0], q[..., 2]-q[..., 1], q[..., 4]-q[..., 3], -q[..., 5]), dim=-1)**2
@@ -69,12 +66,18 @@ class FPU(SeparableHamiltonianSystem):
 
     def transform_to_energy_components_anchored(self, u: torch.Tensor) -> torch.Tensor:
         """Transform canonical variables to variables whose squared l2-norm = Hamiltonian."""
-        # assert shape of p, q
         p, q = u.chunk(2, dim=-1)
         dq_stiff = 0.5 * self.omega * (q[..., 1::2] - q[..., ::2])
         dq_soft = torch.stack((q[..., 0], q[..., 2]-q[..., 1], q[..., 4]-q[..., 3], -q[..., 5]), dim=-1)**2
         return torch.cat((p / 2**0.5, dq_stiff, dq_soft, q), dim=-1)
 
+    # def transform_to_energy_components_anchored(self, u: torch.Tensor) -> torch.Tensor:
+    #     """Transform canonical variables to variables whose squared l2-norm = Hamiltonian."""
+    #     p, q = u.chunk(2, dim=-1)
+    #     dq_stiff = (q[..., 1::2] - q[..., ::2])
+    #     dq_soft = torch.stack((q[..., 0], q[..., 2]-q[..., 1], q[..., 4]-q[..., 3], -q[..., 5]), dim=-1)
+    #     return torch.cat((p, dq_stiff, dq_soft, q), dim=-1)
+    
     def compute_I(self, u: torch.Tensor) -> torch.Tensor:
         """Compute energy of stiff springs."""
         p, q = u.chunk(2, dim=-1)

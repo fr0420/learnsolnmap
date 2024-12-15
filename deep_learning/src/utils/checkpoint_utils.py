@@ -1,6 +1,6 @@
 import torch
 from modules.fixed_timestep import FixedStepSolutionMap
-from modules.variable_timestep import IdentityEnforcedSolutionMap, T0CenteredSolutionMap
+from modules.variable_timestep import IdentityEnforcedSolutionMap, T0CenteredSolutionMap, StackedSolutionMap, T0CenteredSolutionMap_old, StackedSolutionMap_old
 
 
 def load_model_from_ckpt(ckpt_path, model_name="SolutionMap"):
@@ -28,12 +28,20 @@ def load_model_from_ckpt(ckpt_path, model_name="SolutionMap"):
     hyper_params = checkpoint.get("hyper_parameters", {})
     state_dict = checkpoint.get("state_dict", {})
 
+    # Temporary fix for the loss function in hyperparameters
+    loss_target = hyper_params["loss"]["_target_"]
+    if loss_target.startswith("losses") and loss_target.split(".")[1] != "losses":
+        hyper_params["loss"]["_target_"] = "losses." + hyper_params["loss"]["_target_"]
+
     # Instantiate the model using hyperparameters
     model = {
         "FixedStepSolutionMap": FixedStepSolutionMap,
         "IdentityEnforcedSolutionMap": IdentityEnforcedSolutionMap,
         "T0CenteredSolutionMap": T0CenteredSolutionMap,
+        "StackedSolutionMap": StackedSolutionMap,
         "VariableDtSolutionMap": IdentityEnforcedSolutionMap,
+        "T0CenteredSolutionMap_old": T0CenteredSolutionMap_old,
+        "StackedSolutionMap_old": StackedSolutionMap_old,
     }.get(model_name)(**hyper_params)
 
     # If state_dict is empty, return without loading weights

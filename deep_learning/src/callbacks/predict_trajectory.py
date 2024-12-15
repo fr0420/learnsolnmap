@@ -26,14 +26,6 @@ def predict_and_plot(samples: Tensor, model: BaseSolutionMap, nsteps: int, t: fl
     with torch.no_grad():
         t = torch.tensor(t, dtype=model.dtype).repeat(samples.shape[0], 1).to(model.device)
         predictions = model.predict_sequence(samples, t, sequence_len=nsteps+1)
-        # if isinstance(model, BaseVariableDtSolutionMap):
-        #     if Dt is None:
-        #         raise ValueError("Dt must be provided for prediction.")
-        #     else:
-        #         Dt = torch.tensor(Dt, dtype=model.dtype).repeat(samples.shape[0], 1).to(model.device)
-        #     predictions = model.predict_sequence(samples, Dt, sequence_len=nsteps+1)
-        # else:
-        #     predictions = model(samples, sequence_len=nsteps+1)
 
     # Set model back to train mode
     model.train()
@@ -119,10 +111,13 @@ class PredictAndPlotTrajectory(pl.Callback):
         for name, fig in figures.items():
             fig.suptitle(f"epoch {trainer.current_epoch}")
             for ax in fig.get_axes():
-                ax.text(0.95, 0.01, f"epoch {trainer.current_epoch}",
-                        verticalalignment="bottom", horizontalalignment="right",
-                        transform=ax.transAxes, fontsize=15)  # workaround for showing epoch number in wandb panel 
-
+                try: 
+                    ax.text(0.95, 0.01, f"epoch {trainer.current_epoch}",
+                            verticalalignment="bottom", horizontalalignment="right",
+                            transform=ax.transAxes, fontsize=15)  # workaround for showing epoch number in wandb panel
+                except TypeError:
+                    pass
+                    
         if trainer.logger:
             log = {f"predict/{name}": fig for name, fig in figures.items()}
             trainer.logger.experiment.log(log, commit=False)

@@ -94,12 +94,12 @@ class CombinedDataModule(pl.LightningDataModule):
 
         logger.info(f"Supervised train dataset directory: {self.sup_train_config['data_dir']}")
         logger.info(f"Supervised test dataset directory: {self.sup_test_config['data_dir']}")
-        logger.info(f"U_n (n=0,1,...,{self.ds_train_sup.sequence_len-1}) train: {self.ds_train_sup.inputs.shape}")
-        logger.info(f"U_n (n=0,1,...,{self.ds_test_sup.sequence_len-1}) test: {self.ds_test_sup.inputs.shape}")
+        logger.info(f"U_n (n=0,1,...,{self.sup_train_config['sequence_len']-1}) train: {self.ds_train_sup[:]['input'].shape}")
+        logger.info(f"U_n (n=0,1,...,{self.sup_test_config['sequence_len']-1}) test: {self.ds_test_sup[:]['input'].shape}")
         logger.info(f"Unsupervised train dataset directory: {self.unsup_train_config['data_dir']}")
         logger.info(f"Unsupervised test dataset directory: {self.unsup_test_config['data_dir']}")
-        logger.info(f"U_0 train: {self.ds_train_unsup.inputs.shape}")
-        logger.info(f"U_0 test: {self.ds_test_unsup.inputs.shape}")
+        logger.info(f"U_0 train: {self.ds_train_unsup[:]['input'].shape}")
+        logger.info(f"U_0 test: {self.ds_test_unsup[:]['input'].shape}")
 
     def get_dtype(self):
         return self.sup_train_config["dtype"]

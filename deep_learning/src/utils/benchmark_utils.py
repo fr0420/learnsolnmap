@@ -20,7 +20,7 @@ def time_forward(model: BaseSolutionMap, nsteps_list: List[int] = [0, 1,]):
     for b in batch_sizes:
         for device in devices:
             u = model._prepare_random_states(b).to(device)
-            t = torch.ones(b, 1).to(device)
+            t = torch.ones(b, 1).to(device) * 10.
             model.to(device)
             label = "forward time"
             sub_label=f"u: {u.shape}, t: {t.shape}"
@@ -56,7 +56,7 @@ def time_backward(model: BaseSolutionMap, nsteps_list: List[int] = [0, 1,]):
     results = []
     for b in batch_sizes:
         u = model._prepare_random_states(b).to(device)
-        t = torch.ones(b, 1).to(device)
+        t = torch.ones(b, 1).to(device) * 10.
         label = f"backward time ({device})"
         sub_label=f"u: {u.shape}, t: {t.shape}"
 
@@ -81,8 +81,9 @@ def outputs_stats(model: BaseSolutionMap, nsteps: int = 5):
     
     device = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda:0")
     model.to(device)
-    u0 = model._prepare_random_states(batch_size=128)
-    t = torch.ones(128, 1).to(u0)
+    # u0 = model._prepare_random_states(batch_size=128)
+    u0 = model.problem.default_initial_states().to(model.dtype).to(device)
+    t = torch.ones(len(u0), 1).to(u0) * 10.
 
     v0, x0 = u0.chunk(2, dim=-1)
     col = pd.Series(
