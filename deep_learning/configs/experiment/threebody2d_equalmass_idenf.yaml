@@ -7,7 +7,7 @@ defaults:
   - override /datamodule: combined
   - override /module: identityenforced
   - override /module/problem: threebody2d
-  - override /module/loss: mse
+  - override /module/loss: anchoredenergynormsquared
   - override /module/optimizer: adamw
   - override /module/scheduler: 1cycle
   - override /module/network: modmlp
@@ -27,54 +27,78 @@ defaults:
 
 
 datamodule:
-#   train:
-#     data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version6/max_Dt=1e0_min_Dt=-1e0_filtered/train
-#     # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version7/max_Dt=1e0_min_Dt=-1e0/train
-#     # Dt: 0.125
-#     Dt_range: [-0.3, 0.3]
-#     sequence_len: 2
-#     downsample_factor: 1.0
-#   test:
-#     data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version6/max_Dt=1e0_min_Dt=-1e0_filtered/test
-#     # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version7/max_Dt=1e0_min_Dt=-1e0/test
-#     # Dt: 0.125
-#     Dt_range: [-0.3, 0.3]
-#     sequence_len: 2
-#     downsample_factor: 1.0
-#   batch_size: 100
-#   num_workers: 0
+  # train:
+  #   data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/max_Dt=1e0_min_Dt=-1e0_filtered/train
+  #   # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version7/max_Dt=1e0_min_Dt=-1e0/train
+  #   # Dt: 0.125
+  #   Dt_range: [-1, 1]
+  #   sequence_len: 2
+  #   downsample_factor: 1.0
+  #   # required_params: ['h_max']
+  # test:
+  #   data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/max_Dt=1e0_min_Dt=-1e0_filtered/test
+  #   # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version7/max_Dt=1e0_min_Dt=-1e0/test
+  #   # Dt: 0.125
+  #   Dt_range: [-1, 1]
+  #   sequence_len: 2
+  #   downsample_factor: 1.0
+  #   # required_params: ['h_max']
+  # batch_size: 100
+  # num_workers: 0
 
   supervised:
     train:
-      data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version5/max_Dt=1e0_min_Dt=-1e0_filtered/train
+      # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/max_Dt=1e0_min_Dt=-1e0_filtered/train
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/max_Dt=1e-2_min_Dt=-1e-2_filtered/train
       # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version7/max_Dt=1e0_min_Dt=-1e0/train
       # Dt: 0.125
-      Dt_range: [-1, 1]
+      # Dt_filter: [0, 1]
       sequence_len: 2
       downsample_factor: 1.0
+      required_params: ['largest_eigval', 'h_max']
+      param_filters:
+        largest_eigval:
+          min: 10.0
     test:
-      data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version5/max_Dt=1e0_min_Dt=-1e0_filtered/test
+      # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/max_Dt=1e0_min_Dt=-1e0_filtered/test
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/max_Dt=1e-2_min_Dt=-1e-2_filtered/test
       # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version7/max_Dt=1e0_min_Dt=-1e0/test
       # Dt: 0.125
-      Dt_range: [-1, 1]
+      # Dt_filter: [0, 1]
       sequence_len: 2
       downsample_factor: 1.0
+      required_params: ['largest_eigval', 'h_max']
+      param_filters:
+        largest_eigval:
+          min: 10.0
     batch_size: 100
 
   unsupervised:
     train:
-      data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version5/inputs/train
+      # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version11-1/inputs/train
+      # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/max_Dt=1e0_min_Dt=-1e0_filtered/train
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/max_Dt=1e-2_min_Dt=-1e-2_filtered/train
       # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version7/max_Dt=1e0_min_Dt=-1e0/train
       Dt: 0.0
       sequence_len: 1
       downsample_factor: 1.0
+      required_params: ['largest_eigval', 'h_max']
+      param_filters:
+        largest_eigval:
+          min: 10.0
     test:
-      data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version5/inputs/test
+      # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version11-1/inputs/test
+      # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/max_Dt=1e0_min_Dt=-1e0_filtered/test
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/max_Dt=1e-2_min_Dt=-1e-2_filtered/test
       # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version7/max_Dt=1e0_min_Dt=-1e0/test
       Dt: 0.0
       sequence_len: 1
       downsample_factor: 1.0
-    batch_size: 2000
+      required_params: ['largest_eigval', 'h_max']
+      param_filters:
+        largest_eigval:
+          min: 10.0
+    batch_size: 100
   
   num_workers: 0
   pin_memory: false
@@ -97,36 +121,46 @@ module:
   use_dimensionless: false
 
   loss_hparams:
-    # data_misfit:
-    #   strength: 1.0
-    residual:
+    data_misfit:
       strength: 1.0
-      # batch_size: 2000 
-      u0_dist:
-        type: precomputed
-      t_dist:
-        type: normal
-        mean: 0.0
-        std: 0.1
-      use_mse: true
-    # numerical_residual:
-    #   strength: 0.1
-    #   # batch_size: 1000
-    #   integrator: 
-    #     method: ImplicitMidpoint
-    #     stepsize: 0.002
-    #     nsteps: 1
+    # residual:
+    #   strength: 1.0
+    #   # batch_size: 2000 
     #   u0_dist:
-    #     type: precomputed
+    #     type: augment_precomputed
+    #     stiffness_threshold: 10.0
+    #     augmentation_factor: 4
+    #     perturbation_scale: 0.05
     #   t_dist:
-    #     # type: uniform
-    #     # min: 0.0
-    #     # max: 10.0
+    #     type: uniform
+    #     min: 0.0
+    #     max: 0.1
     #     # type: normal
     #     # mean: 0.0
     #     # std: 0.1
-    #     type: precomputed
     #   use_mse: true
+    numerical_residual:
+      strength: 0.01
+      # batch_size: 1000
+      adaptive: true
+      integrator: 
+        method: VelocityVerlet
+        stepsize: 0.01
+        nsteps: 1
+      u0_dist:
+        type: precomputed
+        # stiffness_threshold: 10.0
+        # augmentation_factor: 4
+        # perturbation_scale: 0.05
+      t_dist:
+        type: uniform
+        min: -0.01
+        max: 0.01
+        # type: normal
+        # mean: 0.0
+        # std: 0.1
+        # type: precomputed
+      use_mse: false
 
   # loss:
   #   weight: [1e2, 1e2, 1e0, 1e0, 1e-3, 1e-3, 1e0, 1e0, 1e0, 1e0, 1e0, 1e0]
@@ -166,7 +200,7 @@ module:
     input_dim: 13 
     output_dim: 12
     hidden_dim: 1000
-    n_hidden_layers: 6
+    n_hidden_layers: 12
     # n_henon_layers: 16
     # activation:
     #   _target_: torch.nn.Tanh
@@ -184,7 +218,7 @@ callbacks:
 
   predict_and_plot_trajectory:
     nsteps: 1000
-    Dt: 0.1
+    Dt: 0.01
     save_predictions: false
     log_freq: 10
 

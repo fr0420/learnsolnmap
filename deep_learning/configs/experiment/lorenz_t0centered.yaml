@@ -1,13 +1,13 @@
 # @package _global_
 
 # to execute this experiment run:
-# python train.py experiment=threebody2d_equalmass_t0centered
+# python train.py experiment=lorenz_t0centered
 
 defaults:
   - override /datamodule: default
   - override /module: t0centered
-  - override /module/problem: threebody2d
-  - override /module/loss: anchoredenergynormsquared
+  - override /module/problem: lorenz
+  - override /module/loss: mse
   - override /module/optimizer: adamw
   - override /module/scheduler: 1cycle
   - override /module/network@module.net_T0: modmlp
@@ -29,27 +29,17 @@ defaults:
 
 datamodule:
   train:
-    # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version6/Dt=5e-1_filtered/train
-    data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/Dt=5e-1_filtered/train
-    Dt: 0.5
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/lorenz/version1/Dt=1e-1/train
+    Dt: 0.1
     # Dt_range: [-1, 1]
     sequence_len: 2
     downsample_factor: 1.0
-    required_params: ['largest_eigval', 'h_max']
-    # param_filters:
-    #   largest_eigval:
-    #     max: 10.0
   test:
-    # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version6/Dt=5e-1_filtered/test
-    data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/Dt=5e-1_filtered/test
-    Dt: 0.5
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/lorenz/version1/Dt=1e-1/test
+    Dt: 0.1
     # Dt_range: [-1, 1]
     sequence_len: 2
     downsample_factor: 1.0
-    required_params: ['largest_eigval', 'h_max']
-    # param_filters:
-    #   largest_eigval:
-    #     max: 10.0
   batch_size: 100
   num_workers: 0
 
@@ -94,12 +84,7 @@ trainer:
   # log_every_n_steps: 4
 
 module:
-  T0: 0.5
-
-  problem: 
-    m1: 1.0
-    m2: 1.0
-    m3: 1.0
+  T0: 0.1
 
   use_dimensionless: false
 
@@ -118,27 +103,24 @@ module:
     #   use_mse: true
     numerical_residual:
       strength: 0.01
-      # batch_size: 1000
-      adaptive: true
+      batch_size: 100
       integrator: 
-        method: VelocityVerlet
+        method: ImplicitMidpoint
         stepsize: 0.01
         nsteps: 1
       u0_dist:
-        type: precomputed
+        type: random
       t_dist:
         # type: uniform
         # min: 0.0
         # max: 10.0
         type: normal
-        mean: 0.5
-        std: 0.05
+        mean: 0.1
+        std: 0.02
         # type: precomputed
-      use_mse: false
+      use_mse: true
 
   # loss:
-  #   weight: [1e2, 1e2, 1e0, 1e0, 1e-3, 1e-3, 1e0, 1e0, 1e0, 1e0, 1e0, 1e0]
-  #   # weight: [1e4, 1e4, 1e0, 1e0, 1e0, 1e0, 1e0, 1e0, 1e-4, 1e-4, 1e-4, 1e-4]
 
   optimizer:
     lr: 1e-4
@@ -171,19 +153,19 @@ module:
   #   stds:  [1., 1., 1.e-4, 1., 1., 1.e-4, 1.e-3, 1.e-3, 1.e-4, 1., 1., 1.e-4, 100., 100., 0.01, 100, 100, 0.5]
 
   net_T0:
-    input_dim: 12
-    output_dim: 12
+    input_dim: 3
+    output_dim: 3
     hidden_dim: 1000
-    n_hidden_layers: 6
+    n_hidden_layers: 4
     # n_henon_layers: 16
     # activation:
     #   _target_: torch.nn.Tanh
 
   net_residual:
-    input_dim: 13 
-    output_dim: 12
+    input_dim: 4 
+    output_dim: 3
     hidden_dim: 1000
-    n_hidden_layers: 6
+    n_hidden_layers: 4
     # n_henon_layers: 16
     # activation:
     #   _target_: torch.nn.Tanh
@@ -200,8 +182,8 @@ callbacks:
     # init_len: 1s
 
   predict_and_plot_trajectory:
-    nsteps: 40
-    Dt: 0.5
+    nsteps: 1000
+    Dt: 0.1
     save_predictions: false
     log_freq: 10
 
@@ -216,4 +198,4 @@ callbacks:
 
 loggers:
   wandb:
-    group: threebody2d-equalmass
+    group: lorenz

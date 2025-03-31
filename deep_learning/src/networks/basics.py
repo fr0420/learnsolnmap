@@ -76,6 +76,24 @@ class MLP(nn.Module):
             return x
 
 
+class BranchedMLP(nn.Module):
+    """Branches of Multi-layer perceptrons."""
+    
+    def __init__(self, input_dims, output_dims, hidden_dim, n_hidden_layers, activation, use_bn=False, use_output_bias=True):
+        super(BranchedMLP, self).__init__()
+        
+        if len(input_dims) != len(output_dims): 
+            raise ValueError("The number of branches should match the number of input and output dimensions.")
+
+        self.mlps = nn.ModuleList()
+        for i in range(len(input_dims)):
+            layer_sizes = [input_dims[i]] + [hidden_dim for _ in range(n_hidden_layers)] + [output_dims[i]]
+            self.mlps.append(MLP(layer_sizes, activation, use_bn, use_output_bias))
+        
+    def forward(self, xs):
+        return [mlp(x) for x, mlp in zip(xs, self.mlps)]
+
+
 class FrictionBlock(nn.Module):
     """Friction Block."""
     

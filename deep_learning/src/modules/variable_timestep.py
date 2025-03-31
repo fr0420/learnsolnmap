@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import hydra
 from omegaconf import DictConfig
@@ -73,12 +73,35 @@ class FeatureNormalization(nn.Module):
         return x * self.stds + self.means
 
 
-class IdentityEnforcedSolutionMap(BaseSolutionMap):
+class PreserveVelocityNorm(nn.Module):
     """
-    Solution map enforcing the identity function at t = 0.
+    Normalize the first two components (vx, vy) of an input tensor so that
+    their norm matches that of a reference tensor.
+    
+    For example, if:
+      original = [vx, vy, ...] with target norm r = sqrt(vx^2 + vy^2),
+      updated  = [vx_new, vy_new, ...],
+    then the module rescales (vx_new, vy_new) so that their norm equals r.
+    """
+    def __init__(self, eps: float = 1e-8):
+        super(PreserveVelocityNorm, self).__init__()
+        self.eps = eps
 
+    def forward(self, original: torch.Tensor, updated: torch.Tensor) -> torch.Tensor:
+        target_norm = torch.norm(original[..., :2], p=2, dim=-1, keepdim=True)        
+        updated_norm = torch.norm(updated[..., :2], p=2, dim=-1, keepdim=True) + self.eps
+        normalized_velocity = updated[..., :2] / updated_norm * target_norm        
+        out = torch.cat([normalized_velocity, updated[..., 2:]], dim=-1)
+        return out
+
+
+class SolutionMapWithF(BaseSolutionMap):
+    """
+    Solution map with an F function.
+    
     Definition:
-        Phi(u0, t) = u0 + scale * mult_act(multi_w * t) * net([u0, t])
+        F(u, t, p) = scale * mult_act(multi_w * t) * net([u, t, p])
+        Optionally, augment the network input with f(u): net([f(u), u, t, p])
     """
 
     def __init__(
@@ -87,12 +110,11 @@ class IdentityEnforcedSolutionMap(BaseSolutionMap):
         multiplier_activation: Optional[DictConfig] = None,
         temporal_encoding: Optional[DictConfig] = None,
         feature_normalization: Optional[DictConfig] = None,
+        use_dudt: bool = False,
         **kwargs
     ) -> None:
-        super(IdentityEnforcedSolutionMap, self).__init__(**kwargs)
-        
-        self.save_hyperparameters(logger=False)
-        
+        super(SolutionMapWithF, self).__init__(**kwargs)
+
         if multiplier_activation is None:
             multiplier_activation = {"_target_": "torch.nn.Identity"}
         
@@ -102,254 +124,166 @@ class IdentityEnforcedSolutionMap(BaseSolutionMap):
         self.scale = nn.Parameter(torch.tensor(1.), requires_grad=True)
         self.temp_enc = hydra.utils.instantiate(temporal_encoding) if temporal_encoding else None
         self.feat_norm = hydra.utils.instantiate(feature_normalization) if feature_normalization else None
-    
+        self.use_dudt = use_dudt
+
         if self.weight_init is not None:
             self._init_weights()
-
-    def forward(self, u0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        # u0 shape: (bs, 2*dof)
+    
+    def _apply_F(self, u: torch.Tensor, t: torch.Tensor, p: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
+        # u shape: (bs, 2*dof)
         # t shape: (bs, 1)
+        # p[key] shape: (bs, 1) (only keys in self.problem_param_keys are used)
         # out shape: (bs, 2*dof)
+        
+        if self.use_dudt:
+            # switch to dimensional space to compute f(u, p) then switch back to nondimensional space
+            du = self.problem.compute_du(self._apply_dim(u, p), t=None, p=p)
+            du = self._apply_nondim(du, p, deriv_mode=True)
 
-        u0 = self._apply_nondim(u0)
-
+        u_in = self.feat_norm(u) if self.feat_norm is not None else u
         t_in = self.temp_enc(t) if self.temp_enc is not None else t
-        u0_in = self.feat_norm(u0) if self.feat_norm is not None else u0
-        out = self.net(torch.cat([u0_in, t_in], dim=-1))
+        
+        if self.use_dudt:
+            out = self.net(torch.cat([du, u_in, t_in] + self.prepare_params_input(p), dim=-1))
+        else:
+            out = self.net(torch.cat([u_in, t_in] + self.prepare_params_input(p), dim=-1))
         if self.feat_norm is not None:
             out = self.feat_norm.inverse(out)
 
-        mult = self.mult_w * t
-        mult = self.mult_act(mult)
-        out = u0 + self.scale * mult * out
-
-        out = self._apply_dim(out)
+        mult = self.mult_act(self.mult_w * t)
+        out = self.scale * mult * out
 
         return out
 
 
-class T0CenteredSolutionMap(BaseSolutionMap):
+class IdentityEnforcedSolutionMap(SolutionMapWithF):
     """
-    Solution map with the timestep `t` centered around a reference time `T0`.
+    Solution map enforcing the identity function at t = 0.
 
     Definition:
-        Phi(u0, t) = net_T0(u0) + scale * mult_act(multi_w * (t-T0)) * net_res([net_T0(u0), t-T0])  
+        Phi(u0, t, p) = u0 + F(u0, t, p) 
+                      = u0 + scale * mult_act(multi_w * t) * net([u0, t, p])
     """
-
+    
     def __init__(
-        self,
-        T0: float,
-        net_T0: DictConfig,
-        net_residual: DictConfig,
+        self, 
+        network: DictConfig, 
         multiplier_activation: Optional[DictConfig] = None,
         temporal_encoding: Optional[DictConfig] = None,
+        feature_normalization: Optional[DictConfig] = None,
+        use_dudt: bool = False,
+        preserve_velocity_norm: bool = False,
         **kwargs
     ) -> None:
-        super(T0CenteredSolutionMap, self).__init__(**kwargs)
-
+        super(IdentityEnforcedSolutionMap, self).__init__(
+            network=network,
+            multiplier_activation=multiplier_activation,
+            temporal_encoding=temporal_encoding,
+            feature_normalization=feature_normalization,
+            use_dudt=use_dudt,
+            **kwargs
+        )
         self.save_hyperparameters(logger=False)
+        self.preserve_velocity_norm = PreserveVelocityNorm() if preserve_velocity_norm else None
 
-        if multiplier_activation is None:
-            multiplier_activation = {"_target_": "torch.nn.Identity"}
-
-        self.register_buffer("T0", torch.tensor(T0))
-
-        if net_T0["_target_"] in [
-            "modules.fixed_timestep.FixedStepSolutionMap",
-            "modules.variable_timestep.IdentityEnforcedSolutionMap",
-            "modules.variable_timestep.T0CenteredSolutionMap"]:
-            self.net_T0 = hydra.utils.instantiate(net_T0, _recursive_=False)
-        else:
-            self.net_T0 = hydra.utils.instantiate(net_T0)
-        self.net_res = hydra.utils.instantiate(net_residual)
-        self.mult_act = hydra.utils.instantiate(multiplier_activation)
-        self.mult_w = nn.Parameter(torch.tensor(1.0), requires_grad=True)
-        self.scale = nn.Parameter(torch.tensor(1.0), requires_grad=True)
-
-        self.temp_enc = hydra.utils.instantiate(temporal_encoding) if temporal_encoding else None
-
-        if self.weight_init is not None:
-            self._init_weights()
-
-    def forward(self, u0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def forward(self, u0: torch.Tensor, t: torch.Tensor, p: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
         # u0 shape: (bs, 2*dof)
         # t shape: (bs, 1)
+        # p[key] shape: (bs, 1) (only keys in self.problem_param_keys are used)
         # out shape: (bs, 2*dof)
 
-        u0 = self._apply_nondim(u0)
-
-        net_T0_out = self.evaluate_net_T0(u0)
-
-        if self.temp_enc is not None:
-            t_in = self.temp_enc(t - self.T0)
-        else:
-            t_in = t - self.T0
-        res_in = torch.cat([net_T0_out, t_in], dim=-1)
-        res_out = self.net_res(res_in)
-
-        mult = self.mult_w * (t - self.T0)
-        mult = self.mult_act(mult)
-        out = net_T0_out + self.scale * mult * res_out
-
-        out = self._apply_dim(out)
+        u0 = self._apply_nondim(u0, p)
+        out = u0 + self._apply_F(u0, t, p)
+        if self.preserve_velocity_norm is not None:
+            out = self.preserve_velocity_norm(u0, out)
+        out = self._apply_dim(out, p)
 
         return out
 
-    def evaluate_net_T0(self, u0_nd: torch.Tensor) -> torch.Tensor:
-        if isinstance(self.net_T0, T0CenteredSolutionMap) or isinstance(self.net_T0, IdentityEnforcedSolutionMap):
-            u0 = self._apply_dim(u0_nd)
-            t = torch.ones(u0.shape[0], 1).to(u0) * self.T0
-            out = self.net_T0(u0, t)
-            out_nd = self._apply_nondim(out)
-            return out_nd
-        elif isinstance(self.net_T0, FixedStepSolutionMap):
-            u0 = self._apply_dim(u0_nd)
-            out = self.net_T0(u0, None, 2)[1]
-            out_nd = self._apply_nondim(out)
-            return out_nd
-        else:
-            return self.net_T0(u0_nd)
+    def _calc_dPhidt_at_zero_manually(self, u0: torch.Tensor, p: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
+        # todo: fix this function when self.preserve_velocity_norm is not None
+        u0 = self._apply_nondim(u0, p)
 
-    def extra_repr(self):
-        return super(T0CenteredSolutionMap, self).extra_repr() + f"\nT0: {self.T0.item()}"
-    
-    @classmethod
-    def from_pretrained(
-        cls,
-        ckpt_path: str,
-        pretrained_class: str,
-        T0: float,
-        net_residual: DictConfig,
-        multiplier_activation: Optional[DictConfig] = None,
-        temporal_encoding: Optional[DictConfig] = None,
-        pretrained_frozen: bool = True,
-        **kwargs
-    ) -> "T0CenteredSolutionMap":
+        t = torch.zeros_like(u0[:, :1])
+        u0_in = self.feat_norm(u0) if self.feat_norm is not None else u0
+        t_in = self.temp_enc(t) if self.temp_enc is not None else t
 
-        ckpt = torch.load(ckpt_path)
-        config = ckpt["hyper_parameters"]
-        state_dict = ckpt["state_dict"]
-        config["_target_"] = pretrained_class
+        out = self.net(torch.cat([u0_in, t_in] + self.prepare_params_input(p), dim=-1))
+        
+        out = self.scale * self.mult_w * out
+        out = self._apply_dim(out, p)
+        return out 
 
-        solnmap = cls(
-            T0=T0,
-            net_T0=config,
-            net_residual=net_residual,
-            multiplier_activation=multiplier_activation,
-            temporal_encoding=temporal_encoding,
-            **kwargs
-        )
-        solnmap.net_T0.load_state_dict(state_dict, strict=False)
 
-        if isinstance(solnmap.net_T0, FixedStepSolutionMap):
-            if solnmap.net_T0.T0 != T0:
-                raise ValueError("T0 must match the fixed timestep of the pretrained model.")
-
-        if pretrained_frozen:
-            for param in solnmap.net_T0.parameters():
-                param.requires_grad = False
-
-        return solnmap
-    
-
-class StackedSolutionMap(BaseSolutionMap):
+class StackedSolutionMap(SolutionMapWithF):
     """
     Stacked solution map.
 
     Definition:
-        Let Phi_k(u0, t) be the solution map for t_k <= t <= t_{k+1}. Then Phi(u0, t) is defined recursively as
-        1. Phi_0(u0, t) = u0 + F(u0, t)
-        2. Phi_k(u0, t) = Phi_{k-1}(u0, t_k) + F(Phi_{k-1}(u0, t_k), t-t_k) for k = 1, 2, ...
+        Let Phi_k(u0, t, p) be the solution map for t_k <= t <= t_{k+1}. Then Phi(u0, t, p) is defined recursively as
+        1. Phi_0(u0, t, p) = u0 + F(u0, t, p)
+        2. Phi_k(u0, t, p) = Phi_{k-1}(u0, t_k, p) + F(Phi_{k-1}(u0, t_k, p), t-t_k, p) for k = 1, 2, ...
     """
 
     def __init__(
-        self,
-        time_points: List[float],
-        network: DictConfig,
+        self, 
+        time_points: List[float], 
+        network: DictConfig, 
         multiplier_activation: Optional[DictConfig] = None,
         temporal_encoding: Optional[DictConfig] = None,
         feature_normalization: Optional[DictConfig] = None,
         **kwargs
     ) -> None:
-        super(StackedSolutionMap, self).__init__(**kwargs)
-        
+        super(StackedSolutionMap, self).__init__(
+            network=network,
+            multiplier_activation=multiplier_activation,
+            temporal_encoding=temporal_encoding,
+            feature_normalization=feature_normalization,
+            **kwargs
+        )
         self.save_hyperparameters(logger=False)
-        
+
         if time_points[0] != 0.:
             time_points = [0.] + time_points
         if not all(t1 < t2 for t1, t2 in zip(time_points, time_points[1:])):
             raise ValueError("Time points must be strictly increasing.")
         self.register_buffer("time_points", torch.tensor(time_points))
 
-        if multiplier_activation is None:
-            multiplier_activation = {"_target_": "torch.nn.Identity"}
-        
-        self.net = hydra.utils.instantiate(network)
-        self.mult_act = hydra.utils.instantiate(multiplier_activation)
-        self.mult_w = nn.Parameter(torch.tensor(1.), requires_grad=True)
-        self.scale = nn.Parameter(torch.tensor(1.), requires_grad=True)
-        self.temp_enc = hydra.utils.instantiate(temporal_encoding) if temporal_encoding else None
-        self.feat_norm = hydra.utils.instantiate(feature_normalization) if feature_normalization else None
-
-        if self.weight_init is not None:
-            self._init_weights()
-    
     def extra_repr(self):
         return super(StackedSolutionMap, self).extra_repr() + f"\ntime_points: {self.time_points.tolist()}"
     
-    def forward(self, u0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def forward(self, u0: torch.Tensor, t: torch.Tensor, p: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
         # u0 shape: (bs, 2*dof)
         # t shape: (bs, 1)
+        # p[key] shape: (bs, 1) (only keys in self.problem_param_keys are used)
         # out shape: (bs, 2*dof)
 
-        u0 = self._apply_nondim(u0)
-        u_out = u0.clone()
+        u0 = self._apply_nondim(u0, p)
+        out = u0.clone()
 
         for k in range(len(self.time_points)):
             t_k = self.time_points[k]
-            t_k_plus_1 = self.time_points[k+1] if k+1 < len(self.time_points) else float("inf")
+            mask = (t > t_k).squeeze(-1)
 
-            # case 0: t <= t_k, no need to apply Phi_k
-            mask0 = (t <= t_k).squeeze(-1)
-            if mask0.all():
+            # break loop if all t values are <= t_k (no operation needed)
+            if not mask.any():
                 break
-
-            # case 1: t_k < t <= t_{k+1}
-            mask1 = ((t > t_k) & (t <= t_k_plus_1)).squeeze(-1)
-            if mask1.any():
-                u_out[mask1] = self.apply_Phi_k(u_out[mask1], t[mask1], t_k)
-
+            
+            # calculate delta_t based on whether this is the last time point
             if k + 1 == len(self.time_points):
-                break
+                delta_t = t[mask] - t_k
+            else:
+                t_k_plus_1 = self.time_points[k+1]
+                delta_t = torch.minimum(t[mask] - t_k, torch.full_like(t[mask], t_k_plus_1 - t_k))
 
-            # case 2: t > t_{k+1}
-            mask2 = (t > t_k_plus_1).squeeze(-1)
-            if mask2.any():
-                t_ = torch.ones_like(t[mask2]) * t_k_plus_1
-                u_out[mask2] = self.apply_Phi_k(u_out[mask2], t_, t_k)
+            # apply F with the appropriate delta_t
+            p_mask = {key: val[mask] for key, val in p.items()} if p is not None else None
+            out[mask] = out[mask] + self._apply_F(out[mask], delta_t, p_mask)
 
-        u_out = self._apply_dim(u_out)
-        return u_out
+        out = self._apply_dim(out, p)
 
-    def apply_Phi_k(self, u_k: torch.Tensor, t: torch.Tensor, t_k: torch.Tensor) -> torch.Tensor:
-        # u_k shape: (masked bs, 2*dof)
-        # t shape: (masked bs, 1)
-        # t_k shape: () 
-        # out shape: (masked bs, 2*dof)
-
-        t_in = self.temp_enc(t - t_k) if self.temp_enc is not None else t - t_k
-        u_k_in = self.feat_norm(u_k) if self.feat_norm is not None else u_k
-        
-        F_out = self.net(torch.cat([u_k_in, t_in], dim=-1))
-        if self.feat_norm is not None:
-            F_out = self.feat_norm.inverse(F_out)
-
-        mult = self.mult_w * (t - t_k)
-        mult = self.mult_act(mult)
-        F_out = self.scale * mult * F_out
-
-        return u_k + F_out
-
+        return out
+    
     @classmethod
     def from_IdentityEnforcedSolutionMap(
         cls,
@@ -373,17 +307,18 @@ class StackedSolutionMap(BaseSolutionMap):
             feature_normalization=config.get("feature_normalization", None),
             **kwargs
         )
-        solnmap.load_state_dict(state_dict, strict=False)
+        solnmap.load_state_dict(state_dict, strict=True)
 
         return solnmap
-    
 
-class T0CenteredSolutionMap_old(BaseSolutionMap):
+
+class T0CenteredSolutionMap(SolutionMapWithF):
     """
     Solution map with the timestep `t` centered around a reference time `T0`.
 
     Definition:
-        Phi(u0, t) = net_T0(u0) + scale * mult_act(multi_w * (t-T0)) * net_res([u0, t-T0])  
+        Phi(u0, t, p) = net_T0(u0, p) + F(net_T0(u0, p), t-T0, p)
+                      = net_T0(u0, p) + scale * mult_act(multi_w * (t-T0)) * net([net_T0(u0, p), t-T0, p])  
     """
 
     def __init__(
@@ -393,17 +328,22 @@ class T0CenteredSolutionMap_old(BaseSolutionMap):
         net_residual: DictConfig,
         multiplier_activation: Optional[DictConfig] = None,
         temporal_encoding: Optional[DictConfig] = None,
+        feature_normalization: Optional[DictConfig] = None,
+        use_dudt: bool = False,
+        preserve_velocity_norm: bool = False,
         **kwargs
     ) -> None:
-        super(T0CenteredSolutionMap_old, self).__init__(**kwargs)
-
+        super(T0CenteredSolutionMap, self).__init__(
+            network=net_residual,
+            multiplier_activation=multiplier_activation,
+            temporal_encoding=temporal_encoding,
+            feature_normalization=feature_normalization,
+            use_dudt=use_dudt,
+            **kwargs,
+        )
         self.save_hyperparameters(logger=False)
 
-        if multiplier_activation is None:
-            multiplier_activation = {"_target_": "torch.nn.Identity"}
-
         self.register_buffer("T0", torch.tensor(T0))
-
         if net_T0["_target_"] in [
             "modules.fixed_timestep.FixedStepSolutionMap",
             "modules.variable_timestep.IdentityEnforcedSolutionMap",
@@ -411,60 +351,66 @@ class T0CenteredSolutionMap_old(BaseSolutionMap):
             self.net_T0 = hydra.utils.instantiate(net_T0, _recursive_=False)
         else:
             self.net_T0 = hydra.utils.instantiate(net_T0)
-        self.net_res = hydra.utils.instantiate(net_residual)
-        self.mult_act = hydra.utils.instantiate(multiplier_activation)
-        self.mult_w = nn.Parameter(torch.tensor(1.0), requires_grad=True)
-        self.scale = nn.Parameter(torch.tensor(1e0), requires_grad=True)
-
-        self.temp_enc = hydra.utils.instantiate(temporal_encoding) if temporal_encoding else None
+        self.preserve_velocity_norm = PreserveVelocityNorm() if preserve_velocity_norm else None
+        self.use_dudt = use_dudt
 
         if self.weight_init is not None:
             self._init_weights()
 
-    def forward(self, u0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def forward(self, u0: torch.Tensor, t: torch.Tensor, p: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
         # u0 shape: (bs, 2*dof)
         # t shape: (bs, 1)
+        # p[key] shape: (bs, 1) (only keys in self.problem_param_keys are used)
         # out shape: (bs, 2*dof)
 
-        u0 = self._apply_nondim(u0)
-
-        if self.temp_enc is not None:
-            t_in = self.temp_enc(t - self.T0)
-        else:
-            t_in = t - self.T0
-        res_in = torch.cat([u0, t_in], dim=-1)
-        res_out = self.net_res(res_in)
-
-        mult = self.mult_w * (t - self.T0)
-        mult = self.mult_act(mult)
-
-        net_T0_out = self.evaluate_net_T0(u0)
-        out = net_T0_out + self.scale * mult * res_out
-
-        out = self._apply_dim(out)
+        u0 = self._apply_nondim(u0, p)
+        net_T0_out = self._apply_net_T0(u0, p)
+        out = net_T0_out + self._apply_F(net_T0_out, t-self.T0, p)
+        if self.preserve_velocity_norm is not None:
+            out = self.preserve_velocity_norm(u0, out)
+        out = self._apply_dim(out, p)
 
         return out
 
-    def evaluate_net_T0(self, u0_nd: torch.Tensor) -> torch.Tensor:
-        if isinstance(self.net_T0, T0CenteredSolutionMap) or isinstance(self.net_T0, IdentityEnforcedSolutionMap):
-            u0 = self._apply_dim(u0_nd)
-            t = torch.ones(u0.shape[0], 1).to(u0) * self.T0
-            out = self.net_T0(u0, t)
-            out_nd = self._apply_nondim(out)
-            return out_nd
-        elif isinstance(self.net_T0, FixedStepSolutionMap):
-            u0 = self._apply_dim(u0_nd)
-            out = self.net_T0(u0, None, 2)[1]
-            out_nd = self._apply_nondim(out)
-            return out_nd
+    def _apply_net_T0(self, u0_nd: torch.Tensor, p: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
+        if isinstance(self.net_T0, BaseSolutionMap):
+            # temporarily switch back to dimensional space 
+            # because solution maps typically expect dimensional inputs
+            u0 = self._apply_dim(u0_nd, p)
+            if isinstance(self.net_T0, FixedStepSolutionMap):
+                out = self.net_T0(u0, p, None, 2)[1]
+            elif isinstance(self.net_T0, T0CenteredSolutionMap) or isinstance(self.net_T0, IdentityEnforcedSolutionMap):
+                t = torch.full_like(u0[:, :1], self.T0)
+                out = self.net_T0(u0, t, p)
+            else:
+                raise ValueError("Unsupported SolutionMap type.")
+            return self._apply_nondim(out, p)
         else:
-            return self.net_T0(u0_nd)
+            # a standard neural network expects nondimensional inputs
+            if self.use_dudt:
+                # switch to dimensional space to compute f(u, p) then switch back to nondimensional space
+                du0 = self.problem.compute_du(self._apply_dim(u0_nd, p), t=None, p=p)
+                du0_nd = self._apply_nondim(du0, p, deriv_mode=True)
+                return self.net_T0(torch.cat([du0_nd, u0_nd] + self.prepare_params_input(p), dim=-1))
+            else:
+                return self.net_T0(torch.cat([u0_nd] + self.prepare_params_input(p), dim=-1))
 
     def extra_repr(self):
-        return super(T0CenteredSolutionMap_old, self).extra_repr() + f"\nT0: {self.T0.item()}"
+        return super(T0CenteredSolutionMap, self).extra_repr() + f"\nT0: {self.T0.item()}"
     
+    def load_state_dict(self, state_dict, strict=True):
+        # rename keys in state_dict to match the current model
+        new_state_dict = {}
+        for key, value in state_dict.items():
+            if key.startswith("net_res."):
+                new_key = "net" + key[len("net_res"):]
+                new_state_dict[new_key] = value
+            else:
+                new_state_dict[key] = value
+        super(T0CenteredSolutionMap, self).load_state_dict(new_state_dict, strict=strict)
+
     @classmethod
-    def from_pretrained(
+    def from_pretrained_net_T0(
         cls,
         ckpt_path: str,
         pretrained_class: str,
@@ -472,6 +418,8 @@ class T0CenteredSolutionMap_old(BaseSolutionMap):
         net_residual: DictConfig,
         multiplier_activation: Optional[DictConfig] = None,
         temporal_encoding: Optional[DictConfig] = None,
+        feature_normalization: Optional[DictConfig] = None,
+        preserve_velocity_norm: bool = False,
         pretrained_frozen: bool = True,
         **kwargs
     ) -> "T0CenteredSolutionMap":
@@ -487,9 +435,11 @@ class T0CenteredSolutionMap_old(BaseSolutionMap):
             net_residual=net_residual,
             multiplier_activation=multiplier_activation,
             temporal_encoding=temporal_encoding,
+            feature_normalization=feature_normalization,
+            preserve_velocity_norm=preserve_velocity_norm,
             **kwargs
         )
-        solnmap.net_T0.load_state_dict(state_dict, strict=False)
+        solnmap.net_T0.load_state_dict(state_dict, strict=True)
 
         if isinstance(solnmap.net_T0, FixedStepSolutionMap):
             if solnmap.net_T0.T0 != T0:
@@ -500,100 +450,6 @@ class T0CenteredSolutionMap_old(BaseSolutionMap):
                 param.requires_grad = False
 
         return solnmap
-
-
-class StackedSolutionMap_old(BaseSolutionMap):
-    """
-    Stacked solution map.
-
-    Definition:
-        Let Phi_k(u0, t) be the solution map for t_k <= t <= t_{k+1}. Then Phi(u0, t) is defined recursively as
-        1. Phi_0(u0, t) = u0 + F(u0, t)
-        2. Phi_k(u0, t) = Phi_{k-1}(u0, t_k) + F(Phi_{k-1}(u0, t_k), t-t_k) for k = 1, 2, ...
-    """
-
-    def __init__(
-        self,
-        time_points: List[float],
-        net_F: DictConfig,
-        multiplier_activation: Optional[DictConfig] = None,
-        temporal_encoding: Optional[DictConfig] = None,
-        **kwargs
-    ) -> None:
-        super(StackedSolutionMap_old, self).__init__(**kwargs)
-        
-        self.save_hyperparameters(logger=False)
-        
-        if time_points[0] != 0.:
-            time_points = [0.] + time_points
-        if not all(t1 < t2 for t1, t2 in zip(time_points, time_points[1:])):
-            raise ValueError("Time points must be strictly increasing.")
-        self.register_buffer("time_points", torch.tensor(time_points))
-
-        if multiplier_activation is None:
-            multiplier_activation = {"_target_": "torch.nn.Identity"}
-        
-        self.net_F = hydra.utils.instantiate(net_F)
-        self.mult_act = hydra.utils.instantiate(multiplier_activation)
-        self.mult_w = nn.Parameter(torch.tensor(1.), requires_grad=True)
-        self.scale = nn.Parameter(torch.tensor(1.), requires_grad=True)
-        self.temp_enc = hydra.utils.instantiate(temporal_encoding) if temporal_encoding else None
-
-        if self.weight_init is not None:
-            self._init_weights()
     
-    def extra_repr(self):
-        return super(StackedSolutionMap, self).extra_repr() + f"\ntime_points: {self.time_points.tolist()}"
-    
-    def forward(self, u0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        # u0 shape: (bs, 2*dof)
-        # t shape: (bs, 1)
-        # out shape: (bs, 2*dof)
-
-        u0 = self._apply_nondim(u0)
-        u_out = u0.clone()
-
-        for k in range(len(self.time_points)):
-            t_k = self.time_points[k]
-            t_k_plus_1 = self.time_points[k+1] if k+1 < len(self.time_points) else float("inf")
-
-            # case 0: t <= t_k, no need to apply Phi_k
-            mask0 = (t <= t_k).squeeze(-1)
-            if mask0.all():
-                break
-
-            # case 1: t_k < t <= t_{k+1}
-            mask1 = ((t > t_k) & (t <= t_k_plus_1)).squeeze(-1)
-            if mask1.any():
-                u_out[mask1] = self.apply_Phi_k(u_out[mask1], t[mask1], t_k)
-
-            if k + 1 == len(self.time_points):
-                break
-
-            # case 2: t > t_{k+1}
-            mask2 = (t > t_k_plus_1).squeeze(-1)
-            if mask2.any():
-                t_ = torch.ones_like(t[mask2]) * t_k_plus_1
-                u_out[mask2] = self.apply_Phi_k(u_out[mask2], t_, t_k)
-
-        u_out = self._apply_dim(u_out)
-        return u_out
-
-    def apply_Phi_k(self, u_k: torch.Tensor, t: torch.Tensor, t_k: torch.Tensor) -> torch.Tensor:
-        # u_k shape: (masked bs, 2*dof)
-        # t shape: (masked bs, 1)
-        # t_k shape: () 
-        # out shape: (masked bs, 2*dof)
-
-        if self.temp_enc is not None:
-            t_in = self.temp_enc(t - t_k)
-        else:
-            t_in = t - t_k
-        F_in = torch.cat([u_k, t_in], dim=-1)
-        F_out = self.net_F(F_in)
-
-        mult = self.mult_w * (t - t_k)
-        mult = self.mult_act(mult)
-        F_out = mult * F_out
-
-        return u_k + F_out
+    # @classmethod
+    # def from_pretrained_net_residual(cls,):

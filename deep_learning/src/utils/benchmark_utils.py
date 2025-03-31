@@ -11,7 +11,7 @@ def time_forward(model: BaseSolutionMap, nsteps_list: List[int] = [0, 1,]):
     """Benchmark forward pass time of a SolutionMap model."""
 
     # compare runtime for different batch sizes and devices 
-    batch_sizes = [1, 64, 128, 512]
+    batch_sizes = [1, 64, 128, 512, 1024, 2048]
     devices = [torch.device("cpu")] 
     if torch.cuda.is_available():
         devices.append(torch.device("cuda:0"))
@@ -19,16 +19,19 @@ def time_forward(model: BaseSolutionMap, nsteps_list: List[int] = [0, 1,]):
     results = []
     for b in batch_sizes:
         for device in devices:
-            u = model._prepare_random_states(b).to(device)
-            t = torch.ones(b, 1).to(device) * 10.
+            u = model.problem.random_states(b).to(device)
+            t = torch.ones(b, 1).to(device) * 8.
+            p = {key: torch.ones(b, 1).to(device) * model.problem.default_params[key] 
+                 for key in model.problem_param_keys}
+
             model.to(device)
             label = "forward time"
             sub_label=f"u: {u.shape}, t: {t.shape}"
 
             for nsteps in nsteps_list:
                 results.append(benchmark.Timer(
-                    stmt="model.predict_sequence(u, t, sequence_len=nsteps+1)",
-                    globals={"u": u, "t": t, "model": model, "nsteps": nsteps},
+                    stmt="model.predict_sequence(u, t, p, sequence_len=nsteps+1)",
+                    globals={"u": u, "t": t, "p": p, "model": model, "nsteps": nsteps},
                     label=label,
                     sub_label=sub_label,
                     description=f"{device}: nsteps={nsteps}",
@@ -55,13 +58,15 @@ def time_backward(model: BaseSolutionMap, nsteps_list: List[int] = [0, 1,]):
 
     results = []
     for b in batch_sizes:
-        u = model._prepare_random_states(b).to(device)
+        u = model.problem.random_states(b).to(device)
         t = torch.ones(b, 1).to(device) * 10.
+        p = {key: torch.ones(b, 1).to(device) * model.problem.default_params[key] 
+                 for key in model.problem_param_keys}
         label = f"backward time ({device})"
         sub_label=f"u: {u.shape}, t: {t.shape}"
 
         for nsteps in nsteps_list:
-            batch = {"input": u, "Dt": t, "target_seq": [u for _ in range(nsteps+1)]}
+            batch = {"input": u, "Dt": t, "params": p, "target_seq": [u for _ in range(nsteps+1)]}
             model.set_seq_weights([1.0] * (nsteps+1))
             results.append(benchmark.Timer(
                 stmt="backward(model, batch)",
@@ -84,6 +89,7 @@ def outputs_stats(model: BaseSolutionMap, nsteps: int = 5):
     # u0 = model._prepare_random_states(batch_size=128)
     u0 = model.problem.default_initial_states().to(model.dtype).to(device)
     t = torch.ones(len(u0), 1).to(u0) * 10.
+    p = {key: torch.ones(len(u0), 1).to(u0) * model.problem.default_params[key] for key in model.problem_param_keys}
 
     v0, x0 = u0.chunk(2, dim=-1)
     col = pd.Series(
@@ -91,7 +97,7 @@ def outputs_stats(model: BaseSolutionMap, nsteps: int = 5):
         index=["v_mean", "x_mean", "v_var", "x_var"])
     data["input"] = col
 
-    pred_seq = model.predict_sequence(u0, t, sequence_len=nsteps+1)
+    pred_seq = model.predict_sequence(u0, t, p, sequence_len=nsteps+1)
     for i, u in enumerate(pred_seq):
         v, x = u.chunk(2, dim=-1)
         col = pd.Series(

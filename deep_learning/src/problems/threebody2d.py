@@ -348,6 +348,13 @@ class ThreeBody2D(SeparableHamiltonianSystem):
            + self.m3 * (x3[..., 0]*v3[..., 1] - x3[..., 1]*v3[..., 0])
         return Lz
 
+    def compute_P(self, u: torch.Tensor) -> torch.Tensor:
+        """Compute total linear momentum."""
+        v, _ = u.chunk(2, dim=-1)
+        v1, v2, v3 = v[..., 0:2], v[..., 2:4], v[..., 4:6]
+        P = self.m1 * v1 + self.m2 * v2 + self.m3 * v3
+        return P
+
     def compute_ddx(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         """Compute second derivative of x with respect to time (force/mass)."""
         x1, x2, x3 = x[..., 0:2], x[..., 2:4], x[..., 4:6]
@@ -376,13 +383,16 @@ class ThreeBody2D(SeparableHamiltonianSystem):
         p, q = u_nd.chunk(2, dim=-1)
         p1, p2, p3 = p[..., 0:2], p[..., 2:4], p[..., 4:6]
         q1, q2, q3 = q[..., 0:2], q[..., 2:4], q[..., 4:6]
-        r12 = torch.norm(q2 - q1, dim=-1, keepdim=True)
-        r13 = torch.norm(q3 - q1, dim=-1, keepdim=True)
-        r23 = torch.norm(q3 - q2, dim=-1, keepdim=True)
+        q12 = q2 - q1
+        q13 = q3 - q1
+        q23 = q3 - q2
+        # r12 = torch.norm(q2 - q1, dim=-1, keepdim=True)
+        # r13 = torch.norm(q3 - q1, dim=-1, keepdim=True)
+        # r23 = torch.norm(q3 - q2, dim=-1, keepdim=True)
         return torch.cat((
             p1 / (2*self.m1)**0.5, p2 / (2*self.m2)**0.5, p3 / (2*self.m3)**0.5, 
-            torch.sqrt(self.m1*self.m2/r12), torch.sqrt(self.m1*self.m3/r13), torch.sqrt(self.m2*self.m3/r23),
-            q1, q2, q3), dim=-1)
+            # torch.sqrt(self.m1*self.m2/r12), torch.sqrt(self.m1*self.m3/r13), torch.sqrt(self.m2*self.m3/r23),
+            q1, q2, q3, q12, q13, q23), dim=-1)
 
     def compute_quantities(self, u: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Compute useful quantities accessed by model trainer."""
@@ -437,6 +447,18 @@ class ThreeBody2D(SeparableHamiltonianSystem):
         abs_H_errors = torch.abs(H - H_true)
         rel_H_errors = abs_H_errors / torch.abs(H_true)
 
+        # Compute angular momentum errors
+        Lz = self.compute_Lz(u)
+        Lz_true = self.compute_Lz(u_true)
+        abs_Lz_errors = torch.abs(Lz - Lz_true)
+        rel_Lz_errors = abs_Lz_errors / torch.abs(Lz_true)
+
+        # Compute linear momentum errors 
+        P = self.compute_P(u)
+        P_true = self.compute_P(u_true)
+        abs_P_errors = torch.sum((P - P_true)**2, dim=-1).sqrt()
+        rel_P_errors = abs_P_errors / torch.sum(P_true**2, dim=-1).sqrt()
+
         # Apply reduction
         if reduction == "mean":
             reduction_fn = torch.mean
@@ -469,6 +491,10 @@ class ThreeBody2D(SeparableHamiltonianSystem):
             "rel_traj_err_q3": reduction_fn(rel_traj_errors_q3),
             "abs_H_err": reduction_fn(abs_H_errors),
             "rel_H_err": reduction_fn(rel_H_errors),
+            "abs_Lz_err": reduction_fn(abs_Lz_errors),
+            "rel_Lz_err": reduction_fn(rel_Lz_errors),
+            "abs_P_err": reduction_fn(abs_P_errors),
+            "rel_P_err": reduction_fn(rel_P_errors),
         }
     
     def plot_trajectories(self, trajectories: torch.Tensor) -> Dict[str, plt.Figure]:

@@ -4,12 +4,12 @@
 # python train.py experiment=fpu_t0centered
 
 defaults:
-  - override /datamodule: combined
+  - override /datamodule: default
   - override /module: t0centered
   - override /module/problem: fpu
   - override /module/loss: anchoredenergynormsquared
   - override /module/optimizer: adamw
-  - override /module/scheduler: reduceonplateau
+  - override /module/scheduler: 1cycle
   - override /module/network@module.net_T0: modmlp
   - override /module/network@module.net_residual: modmlp 
   - override /trainer: gpu
@@ -23,64 +23,66 @@ defaults:
     - metrics_logger
     - tqdm_progress_bar
     - predict_and_plot_trajectory
-    - early_stopping
+    # - early_stopping
     - monitor_parameters
 
 
 datamodule:
-  # train:
-  #   # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/train
-  #   data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/train
-  #   Dt: 0.125
-  #   # Dt_range: [-0.125, 0.125]
-  #   sequence_len: 2
-  #   downsample_factor: 0.1
-  # test:
-  #   # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/test
-  #   data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/test
-  #   Dt: 0.125
-  #   # Dt_range: [-0.125, 0.125]
-  #   sequence_len: 2
-  #   downsample_factor: 1.0
-  # batch_size: 100
+  train:
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/train
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/train
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=300/version4/Dt=1.25e-1/train
+    Dt: 0.125
+    # Dt_range: [-0.125, 0.125]
+    sequence_len: 2
+    downsample_factor: 1.0
+  test:
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/test
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/test
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=300/version4/Dt=1.25e-1/test
+    Dt: 0.125
+    # Dt_range: [-0.125, 0.125]
+    sequence_len: 2
+    downsample_factor: 1.0
+  batch_size: 100
 
-  supervised:
-    train:
-      # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/train
-      data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/train
-      Dt: 0.125
-      # Dt_range: [-0.125, 0.125]
-      sequence_len: 2
-      downsample_factor: 0.01
-      # dtype: float64
-    test:
-      # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/test
-      data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/test
-      Dt: 0.125
-      # Dt_range: [-0.125, 0.125]
-      sequence_len: 2
-      downsample_factor: 1.0
-      # dtype: float64
-    batch_size: 100
+  # supervised:
+  #   train:
+  #     # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/train
+  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/train
+  #     Dt: 0.125
+  #     # Dt_range: [-0.125, 0.125]
+  #     sequence_len: 2
+  #     downsample_factor: 1.0
+  #     # dtype: float64
+  #   test:
+  #     # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/test
+  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/test
+  #     Dt: 0.125
+  #     # Dt_range: [-0.125, 0.125]
+  #     sequence_len: 2
+  #     downsample_factor: 1.0
+  #     # dtype: float64
+  #   batch_size: 100
     
-  unsupervised:
-    train:
-      # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/train
-      data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/train
-      Dt: 0.125
-      # Dt_range: [-0.125, 0.125]
-      sequence_len: 2
-      downsample_factor: 0.01
-      # dtype: float64
-    test:
-      # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/test
-      data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/test
-      Dt: 0.125
-      # Dt_range: [-0.125, 0.125]
-      sequence_len: 2
-      downsample_factor: 1.0
-      # dtype: float64
-    batch_size: 2000
+  # unsupervised:
+  #   train:
+  #     # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/train
+  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/train
+  #     Dt: 0.125
+  #     # Dt_range: [-0.125, 0.125]
+  #     sequence_len: 1
+  #     downsample_factor: 1.0
+  #     # dtype: float64
+  #   test:
+  #     # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/test
+  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/test
+  #     Dt: 0.125
+  #     # Dt_range: [-0.125, 0.125]
+  #     sequence_len: 1
+  #     downsample_factor: 1.0
+  #     # dtype: float64
+  #   batch_size: 2000
 
 trainer:
   max_epochs: -1
@@ -97,18 +99,24 @@ module:
   use_dimensionless: false
 
   problem:
-    omega: 50
-
+    omega: 300
+  
+  # loss:
+  #   problem:
+  #     omega: 1.0
+  
   loss_hparams:
     data_misfit:
       strength: 1.0
     numerical_residual:
-      strength: 0.1
-      batch_size: 2000
+      strength: 1e-4
+      # batch_size: 2000
       integrator: 
         method: VelocityVerlet
-        stepsize: 1e-3
+        stepsize: 1e-4
         nsteps: 1
+      u0_dist:
+        type: precomputed
       t_dist:
         # type: uniform
         # min: -20.
@@ -130,16 +138,16 @@ module:
     #   use_mse: true
 
   optimizer:
-    lr: 1e-3
+    lr: 1e-4
   
   scheduler:
     scheduler:
-      # total_steps: 1000000
+      total_steps: 1000000
       # steps_per_epoch: 1600
-      # pct_start: 0.1
-      factor: 0.9
+      pct_start: 0.1
+      # factor: 0.9
       # patience: 8
-      patience: 5000
+      # patience: 5000
     
     extras:
       monitor: step_loss
@@ -158,7 +166,7 @@ module:
     input_dim: 13 
     output_dim: 12
     hidden_dim: 1000
-    n_hidden_layers: 6
+    n_hidden_layers: 12
     # n_henon_layers: 16
     # activation:
     #   _target_: torch.nn.Tanh
@@ -196,8 +204,10 @@ callbacks:
     monitor: val/loss
     patience: 20
 
-  val_checkpoint:
-    save_weights_only: true
+  # val_checkpoint:
+  #   save_weights_only: true
+  #   save_top_k: -1
+  #   every_n_epochs: 25
 
   latest_checkpoint:
     save_weights_only: true

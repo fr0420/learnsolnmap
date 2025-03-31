@@ -36,7 +36,7 @@ def instantiate_first_order_ode_integrator(integrator_name, h, nsteps, f):
         raise ValueError(f"Unknown integrator for first-order ODEs: {integrator_name}")
 
 
-def identity(v):
+def identity(v, p):
     return v
 
 

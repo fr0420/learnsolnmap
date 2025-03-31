@@ -1,0 +1,21 @@
+_target_: modules.variable_timestep_taylor_sf.SFTaylorBasedIdentityEnforcedSolutionMap
+
+defaults:
+  - problem: fpu
+  - optimizer: adamw
+  - scheduler: 1cycle
+  - loss: energynormsquared
+  - network@network_slow: modmlp
+  - network@network_fast: modmlp
+  - _self_
+
+order_slow: 1
+order_fast: 0
+
+multiplier_activation:
+  _target_: torch.nn.Tanh
+
+loss_hparams: null
+use_dimensionless: true
+
+weight_init: xavier_uniform

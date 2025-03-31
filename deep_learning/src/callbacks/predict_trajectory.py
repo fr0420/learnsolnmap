@@ -25,7 +25,9 @@ def predict_and_plot(samples: Tensor, model: BaseSolutionMap, nsteps: int, t: fl
     model.eval()
     with torch.no_grad():
         t = torch.tensor(t, dtype=model.dtype).repeat(samples.shape[0], 1).to(model.device)
-        predictions = model.predict_sequence(samples, t, sequence_len=nsteps+1)
+        p = {key: torch.tensor(model.problem.default_params[key], dtype=model.dtype).repeat(samples.shape[0], 1).to(model.device)
+                 for key in model.problem_param_keys}
+        predictions = model.predict_sequence(samples, t, p, sequence_len=nsteps+1)
 
     # Set model back to train mode
     model.train()

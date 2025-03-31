@@ -3,7 +3,7 @@ scheduler:
   steps_per_cycle: ???
   mult_factor: 1.
   base_lr: 1e-5
-  max_lr: 1e-3
+  max_lr: ${module.optimizer.lr}
   scale_mode: cycle
   scale_fn_type: exponential
   scale_fn_factor: 0.9

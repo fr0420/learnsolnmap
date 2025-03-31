@@ -1,16 +1,16 @@
 # @package _global_
 
 # to execute this experiment run:
-# python train.py experiment=threebody2d_equalmass_stacked
+# python train.py experiment=threebody2d_equalmass_fixedstep
 
 defaults:
   - override /datamodule: default
-  - override /module: stacked
+  - override /module: fixedstep
   - override /module/problem: threebody2d
   - override /module/loss: mse
   - override /module/optimizer: adamw
-  - override /module/scheduler: reduceonplateau
-  - override /module/network: modmlp
+  - override /module/scheduler: 1cycle
+  - override /module/network@module.network.h2h: equiv
   - override /trainer: gpu
   - override /callbacks: 
     - hparams_updater
@@ -24,31 +24,22 @@ defaults:
     - predict_and_plot_trajectory
     # - early_stopping
     - monitor_parameters
-    - time_distribution_scheduler
 
 
 datamodule:
   train:
-    data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/max_Dt=1e0_min_Dt=-1e0_filtered/train
-    # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version7/max_Dt=1e0_min_Dt=-1e0/train
-    # Dt: 0.125
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version6/Dt=5e-1_filtered/train
+    Dt: 0.5
+    # Dt_range: [-1, 1]
     sequence_len: 2
     downsample_factor: 1.0
-    required_params: ['largest_eigval', 'h_max']
-    param_filters:
-      largest_eigval:
-        max: 10.0
   test:
-    data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/max_Dt=1e0_min_Dt=-1e0_filtered/test
-    # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version7/max_Dt=1e0_min_Dt=-1e0/test
-    # Dt: 0.125
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version6/Dt=5e-1_filtered/test
+    Dt: 0.5
+    # Dt_range: [-1, 1]
     sequence_len: 2
     downsample_factor: 1.0
-    required_params: ['largest_eigval', 'h_max']
-    param_filters:
-      largest_eigval:
-        max: 10.0
-  batch_size: 1000
+  batch_size: 100
   num_workers: 0
 
   # supervised:
@@ -85,7 +76,7 @@ datamodule:
   # pin_memory: false
 
 trainer:
-  # max_epochs: -1
+  max_epochs: -1
   max_steps: 1000000
   min_steps: 500000
   # min_epochs: 200
@@ -94,6 +85,8 @@ trainer:
   # log_every_n_steps: 4
 
 module:
+  T0: 0.5
+
   problem: 
     m1: 1.0
     m2: 1.0
@@ -101,71 +94,25 @@ module:
 
   use_dimensionless: false
 
-  time_points: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
-
   loss_hparams:
-    # data_misfit:
-    #   strength: 1.0
-    # residual:
-    #   strength: 1.0
-    #   batch_size: 2000 
-    #   t_dist:
-    #     type: normal
-    #     mean: 0.0
-    #     std: 5.0
-    #   use_mse: true
-    numerical_residual:
+    data_misfit:
       strength: 1.0
-      # batch_size: 1000
-      adaptive: true
-      integrator: 
-        method: VelocityVerlet
-        stepsize: 0.01
-        nsteps: 1
-      u0_dist:
-        type: precomputed
-        # stiffness_threshold: 10.0
-        # augmentation_factor: 4
-        # perturbation_scale: 0.05
-      t_dist:
-        type: uniform
-        min: 0.0
-        max: 0.1
-        # type: normal
-        # mean: 0.0
-        # std: 1.0
-      use_mse: true
-
-  # loss:
-  #   weight: [1e2, 1e2, 1e0, 1e0, 1e-3, 1e-3, 1e0, 1e0, 1e0, 1e0, 1e0, 1e0]
-  #   # weight: [1e4, 1e4, 1e0, 1e0, 1e0, 1e0, 1e0, 1e0, 1e-4, 1e-4, 1e-4, 1e-4]
 
   optimizer:
     lr: 1e-4
   
   scheduler:
     scheduler:
-      # total_steps: 1000000
+      total_steps: 1000000
       # steps_per_epoch: 1600
-      # pct_start: 0.1
-      factor: 0.9
+      pct_start: 0.1
+      # factor: 0.9
       # patience: 8
-      patience: 5000
-      # steps_per_cycle: 100000
-      # scale_fn_factor: 0.8
+      # patience: 5000
     
     extras:
       monitor: step_loss
       interval: step
-
-  multiplier_activation:
-    _target_: torch.nn.Tanh
-
-  # temporal_encoding:
-  #   _target_: modules.variable_timestep.Time2VecEncoding
-  #   output_dim: 5
-  #   min_period: 1.0
-  #   max_period: 1000.0
 
   # feature_normalization:
   #   _target_: modules.variable_timestep.FeatureNormalization
@@ -173,48 +120,33 @@ module:
   #   stds:  [1., 1., 1.e-4, 1., 1., 1.e-4, 1.e-3, 1.e-3, 1.e-4, 1., 1., 1.e-4, 100., 100., 0.01, 100, 100, 0.5]
 
   network:
-    input_dim: 13 
-    output_dim: 12
-    hidden_dim: 1000
-    n_hidden_layers: 12
-    # n_henon_layers: 16
-    # activation:
-    #   _target_: torch.nn.Tanh
+    h2h:
+      # input_dim: 12 
+      # output_dim: 12
+      # hidden_dim: 1000
+      # n_hidden_layers: 6
+      # n_henon_layers: 16
+      # activation:
+      #   _target_: torch.nn.Tanh
+      N: 3
+      d: 2
+      n_hidden_nodes: 1000
+      n_hidden_layers: 4
 
 
 callbacks:
   fixed_seq_weights:
     _target_: callbacks.sequence_weights.FixedSequenceWeights
     # weights: [0., 1., 1., 1., 0., 0.]
-    weights: [0., 1.]
+    weights: [0., 1.,]
   # seq_len_scheduler:
     # weights: [1., 1., 1., 1., 1., 1.]
     # milestones: [10, 20, 50, 100, 200]
     # init_len: 1s
-  
-  time_distribution_scheduler:
-    schedule_keys: [100000, 200000, 300000]
-    schedule_values: 
-      - type: uniform
-        min: 0.
-        max: 0.2
-      - type: uniform
-        min: 0.
-        max: 0.3
-      - type: uniform
-        min: 0.
-        max: 0.4
-      # - type: uniform
-      #   min: 0.
-      #   max: 25.
-      # - type: uniform
-      #   min: 0.
-      #   max: 30.
-    by_epoch: false
 
   predict_and_plot_trajectory:
-    nsteps: 1000
-    Dt: 0.1
+    nsteps: 100
+    Dt: 0.5
     save_predictions: false
     log_freq: 10
 

@@ -1,0 +1,172 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=alphaparticle_stacked
+
+defaults:
+  - override /datamodule: default
+  - override /module: stacked
+  - override /module/problem: alphaparticle
+  - override /module/loss: mse
+  - override /module/optimizer: adamw
+  - override /module/scheduler: none
+  - override /module/network: modmlp
+  - override /trainer: gpu
+  - override /callbacks: 
+    - hparams_updater
+    # - integrator_stepsize_scheduler
+    - val_checkpoint
+    - latest_checkpoint
+    - lr_monitor
+    - metrics_logger
+    - tqdm_progress_bar
+    - predict_and_plot_trajectory
+    # - early_stopping
+    - monitor_parameters
+    # - time_distribution_scheduler
+
+datamodule:
+  train:
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/alphaparticle/eps=5e-2/version1/Dt=1e1/train
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/alphaparticle/eps_mixed/version2/Dt=1e1/train
+    Dt: 10.0
+    # Dt_range: [-1, 1]
+    sequence_len: 2
+    downsample_factor: 1.0
+    required_params: ['epsilon']
+  test:
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/alphaparticle/eps=5e-2/version1/Dt=1e1/test
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/alphaparticle/eps_mixed/version2/Dt=1e1/test
+    Dt: 10.0
+    # Dt_range: [-1, 1]
+    sequence_len: 2
+    downsample_factor: 1.0
+    required_params: ['epsilon']
+  batch_size: 100
+  num_workers: 0
+
+
+trainer:
+  max_epochs: -1
+  max_steps: 1000000
+  min_steps: 500000
+  gradient_clip_val: 2.0
+  gradient_clip_algorithm: value
+  # log_every_n_steps: 4
+
+module:
+  _target_: modules.variable_timestep.StackedSolutionMap.from_IdentityEnforcedSolutionMap
+  ckpt_path: /workspace/projects_rui/learnsolnmap/deep_learning/logs/train/runs/20250228-002350_d0roxz/checkpoints/latest-epoch01249.ckpt
+
+  problem:
+    epsilon: 0.15
+
+  use_dimensionless: false
+
+  problem_param_keys: ['epsilon']
+
+  time_points: [0.0, 10.0, 20.0]
+  loss_hparams:
+    # data_misfit: 
+    #   strength: 1.0
+    numerical_residual:
+      strength: 1.0
+      batch_size: 100
+      integrator: 
+        method: ImplicitMidpoint
+        stepsize: 0.1
+        nsteps: 1
+      u0_dist:
+        type: random
+      t_dist:
+        type: uniform
+        min: 0.
+        max: 20.
+        # type: normal
+        # mean: 0.
+        # std: 5.
+      use_mse: true
+
+  optimizer:
+    lr: 5e-5
+    # weight_decay: 0.0
+  
+  # scheduler:
+  #   scheduler:
+  #     # total_steps: ${trainer.max_steps}
+  #     # pct_start: 0.1
+  #     # factor: 0.9
+  #     # patience: 8
+  #     # patience: 5000
+  #     steps_per_cycle: 50000
+  #     scale_fn_factor: 0.8
+  #   extras:
+  #     # monitor: step_loss
+  #     interval: step
+
+  multiplier_activation:
+    _target_: torch.nn.Tanh
+
+  network:
+    input_dim: 6
+    output_dim: 4
+    hidden_dim: 1000
+    n_hidden_layers: 6
+    # activation:
+    #   _target_: torch.nn.Tanh
+
+
+callbacks:
+  predict_and_plot_trajectory:
+    nsteps: 1000
+    Dt: 10.0
+    save_predictions: false
+    log_freq: 10
+  
+  monitor_parameters:
+    # param_names: ['scale', 'mult_w', 'temp_enc.log_frequencies']
+    param_names: ['scale', 'mult_w']
+    every_n_epochs: 5
+  
+  val_checkpoint:
+    save_top_k: 3
+    # every_n_epochs: 5
+
+  # early_stopping:
+  #   monitor: val/loss
+  #   patience: 20
+  
+  # time_distribution_scheduler:
+  #   schedule_keys: [50000, 100000, 150000]
+  #   schedule_values: 
+  #     - type: uniform
+  #       min: 0.
+  #       max: 0.25
+  #     - type: uniform
+  #       min: 0.
+  #       max: 0.375
+  #     - type: uniform
+  #       min: 0.
+  #       max: 0.5
+  #     # - type: uniform
+  #     #   min: 0.
+  #     #   max: 25.
+  #     # - type: uniform
+  #     #   min: 0.
+  #     #   max: 30.
+  #   by_epoch: false
+
+  # integrator_stepsize_scheduler:
+  #   base_stepsize: 0.1
+  #   schedule_keys: [50000, 100000, 150000, 200000, 250000]
+  #   schedule_values: [0.8, 0.6, 0.4, 0.2, 0.1]
+  #   by_epoch: false
+  #   base_batch_size: 2000
+  #   adjust_batch_size: true
+
+  hparams_updater:
+    metric_hparams:
+
+loggers:
+  wandb:
+    group: alphaparticle

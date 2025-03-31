@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 
-from typing import Dict
+from typing import Dict, List
 from torch import Tensor
 from matplotlib.figure import Figure
 
@@ -17,32 +17,32 @@ class SeparableHamiltonianSystem:
         """Generate initial states."""
         pass
 
-    def compute_Hamiltonian(self, u):
+    def compute_Hamiltonian(self, u, p):
         """Compute total energy / Hamiltonian."""
         v, x = u.chunk(2, dim=-1)
-        return self.compute_U(x) + self.compute_K(v)
+        return self.compute_U(x, p) + self.compute_K(v, p)
     
-    def compute_Lagrangian(self, u):
+    def compute_Lagrangian(self, u, p):
         """Compute Lagrangian."""
         v, x = u.chunk(2, dim=-1)
-        return self.compute_K(v) - self.compute_U(x)
+        return self.compute_K(v, p) - self.compute_U(x, p)
     
-    def compute_U(self, x):
+    def compute_U(self, x, p):
         """Compute potential energy."""
         pass
 
-    def compute_K(self, v):
+    def compute_K(self, v, p):
         """Compute kinetic energy."""
         pass
 
-    def compute_ddx(self, x):
+    def compute_ddx(self, x, t, p):
         """Compute second derivative of x with respect to time (force/mass)."""
         pass
 
-    def compute_du(self, u):
+    def compute_du(self, u, t, p):
         """Compute time derivative of u."""
         v, x = u.chunk(2, dim=-1)
-        dvdt = self.compute_ddx(x, None)
+        dvdt = self.compute_ddx(x, t, p)
         dxdt = v 
         return torch.cat((dvdt, dxdt), dim=-1)
     
@@ -102,3 +102,16 @@ class SeparableHamiltonianSystem:
             sampled_dimensions.append(low + range * torch.rand(n_samples))
 
         return torch.stack(sampled_dimensions, dim=1)  # shape: (n_samples, 2*dof)
+
+    def random_params(self, n_samples: int, param_keys: List[str]) -> Dict[str, Tensor]:
+        """Sample parameters uniformly within a bounded box in the parameter space."""
+
+        params = {}
+        for key in param_keys:
+            if key in self.random_params_bounds:
+                low, high = self.random_params_bounds[key]
+                params[key] = low + (high - low) * torch.rand((n_samples, 1))  # shape: (n_samples, 1)
+            else:
+                raise ValueError(f"Missing bounds for parameter: {key}.")
+
+        return params

@@ -1,9 +1,10 @@
 import torch
 from modules.fixed_timestep import FixedStepSolutionMap
-from modules.variable_timestep import IdentityEnforcedSolutionMap, T0CenteredSolutionMap, StackedSolutionMap, T0CenteredSolutionMap_old, StackedSolutionMap_old
+from modules.variable_timestep import IdentityEnforcedSolutionMap, T0CenteredSolutionMap, StackedSolutionMap
+from modules.variable_timestep_taylor import TaylorBasedIdentityEnforcedSolutionMap, TaylorBasedT0CenteredSolutionMap
+from modules.variable_timestep_taylor_sf import SFTaylorBasedIdentityEnforcedSolutionMap
 
-
-def load_model_from_ckpt(ckpt_path, model_name="SolutionMap"):
+def load_model_from_ckpt(ckpt_path, model_name="T0CenteredSolutionMap", strict=True):
     """
     Loads a model from a checkpoint file.
 
@@ -39,9 +40,12 @@ def load_model_from_ckpt(ckpt_path, model_name="SolutionMap"):
         "IdentityEnforcedSolutionMap": IdentityEnforcedSolutionMap,
         "T0CenteredSolutionMap": T0CenteredSolutionMap,
         "StackedSolutionMap": StackedSolutionMap,
+        "TaylorBasedIdentityEnforcedSolutionMap": TaylorBasedIdentityEnforcedSolutionMap,
+        "TaylorBasedT0CenteredSolutionMap": TaylorBasedT0CenteredSolutionMap,
+        "SFTaylorBasedIdentityEnforcedSolutionMap": SFTaylorBasedIdentityEnforcedSolutionMap,
+        # "ODEEmbeddedIdentityEnforcedSolutionMap": TaylorBasedIdentityEnforcedSolutionMap,
+        # "ODEEmbeddedT0CenteredSolutionMap": TaylorBasedT0CenteredSolutionMap,
         "VariableDtSolutionMap": IdentityEnforcedSolutionMap,
-        "T0CenteredSolutionMap_old": T0CenteredSolutionMap_old,
-        "StackedSolutionMap_old": StackedSolutionMap_old,
     }.get(model_name)(**hyper_params)
 
     # If state_dict is empty, return without loading weights
@@ -54,7 +58,14 @@ def load_model_from_ckpt(ckpt_path, model_name="SolutionMap"):
     model.to(dtype=dtype)
 
     # Load model state from the checkpoint
-    model.load_state_dict(state_dict, strict=False)
+    message = model.load_state_dict(state_dict, strict=strict)
+    if message is not None:
+        if message.missing_keys:
+            print(f"Warning: Missing keys in the state dictionary: {message.missing_keys}")
+        if message.unexpected_keys:
+            print(f"Warning: Unexpected keys in the state dictionary: {message.unexpected_keys}")
+
+    # Set the model to evaluation mode
     model.eval()
 
     return model, dtype

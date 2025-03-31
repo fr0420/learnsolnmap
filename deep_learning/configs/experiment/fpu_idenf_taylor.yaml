@@ -1,0 +1,182 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=fpu_idenf_taylor
+
+defaults:
+  - override /datamodule: combined
+  - override /module: identityenforced_taylor
+  - override /module/problem: fpu
+  - override /module/loss: energynormsquared
+  - override /module/optimizer: adamw
+  - override /module/scheduler: 1cycle
+  - override /module/network: piratenet
+  - override /trainer: gpu
+  - override /callbacks: 
+    - hparams_updater
+    - val_checkpoint
+    - latest_checkpoint
+    - lr_monitor
+    - fixed_seq_weights
+    # - seq_len_scheduler
+    - metrics_logger
+    - tqdm_progress_bar
+    - predict_and_plot_trajectory
+    # - early_stopping
+    - monitor_parameters
+
+
+datamodule:
+  # train:
+  #   # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/train
+  #   data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/train
+  #   Dt: 0.125
+  #   # Dt_range: [-0.125, 0.125]
+  #   sequence_len: 2
+  #   downsample_factor: 1.0
+  # test:
+  #   # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/test
+  #   data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/test
+  #   Dt: 0.125
+  #   # Dt_range: [-0.125, 0.125]
+  #   sequence_len: 2
+  #   downsample_factor: 1.0
+  # batch_size: 100
+
+  supervised:
+    train:
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/train
+      # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/train
+      # Dt: 0.125
+      Dt_filter: [0, 0.125]
+      sequence_len: 2
+      downsample_factor: 1.0
+    test:
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/test
+      # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/test
+      # Dt: 0.125
+      Dt_filter: [0, 0.125]
+      sequence_len: 2
+      downsample_factor: 1.0
+    batch_size: 100
+  unsupervised:
+    train:
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/train
+      # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/train
+      # Dt: 0.125
+      Dt_filter: [-0.125, 0.125]
+      sequence_len: 2
+      downsample_factor: 1.0
+    test:
+      data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/max_Dt=1.25e-1_min_Dt=-1.25e-1/test
+      # data_dir: /workspace/projects_rui/learnsolnmap/data1/fpu/omega=50/version1/Dt=1.25e-1/test
+      # Dt: 0.125
+      Dt_filter: [-0.125, 0.125]
+      sequence_len: 2
+      downsample_factor: 1.0
+    batch_size: 2000
+
+trainer:
+  max_epochs: -1
+  max_steps: 1000000
+  min_steps: 200000
+  # min_epochs: 200
+  # gradient_clip_val: 2.0
+  # gradient_clip_algorithm: value
+  # log_every_n_steps: 4
+
+module:
+  use_dimensionless: true
+
+  order: 0
+
+  problem:
+    omega: 50
+
+  problem_param_keys: []
+
+  loss_hparams:
+    # data_misfit:
+    #   strength: 1.0
+    numerical_residual:
+      strength: 1.0
+      batch_size: 2000
+      integrator: 
+        method: VelocityVerlet
+        stepsize: 1e-3
+        nsteps: 1
+      u0_dist:
+        type: precomputed
+      t_dist:
+        type: uniform
+        min: 0.0
+        max: 0.125
+        # type: normal
+        # mean: 0.0
+        # std: 0.05
+      use_mse: false
+
+  optimizer:
+    lr: 1e-3
+  
+  scheduler:
+    scheduler:
+      total_steps: 200000
+      # steps_per_epoch: 1600
+      pct_start: 0.1
+      # factor: 0.9
+      # patience: 8
+      # patience: 5000
+    
+    extras:
+      monitor: step_loss
+      interval: step
+
+  multiplier_activation:
+    _target_: torch.nn.Tanh
+
+  # temporal_encoding:
+  #   _target_: modules.variable_timestep.Time2VecEncoding
+  #   output_dim: 5
+  #   min_period: 1.0
+  #   max_period: 1000.0
+
+  network:
+    input_dim: 25 
+    output_dim: 12
+    hidden_dim: 1000
+    # n_hidden_layers: 6
+    n_blocks: 2
+    n_linears_per_block: 3
+    use_branched_output_layers: true
+    # n_henon_layers: 16
+    # activation:
+    #   _target_: torch.nn.Tanh
+
+
+callbacks:
+  fixed_seq_weights:
+    _target_: callbacks.sequence_weights.FixedSequenceWeights
+    # weights: [0., 1., 1., 1., 0., 0.]
+    weights: [0., 1.]
+  # seq_len_scheduler:
+    # weights: [1., 1., 1., 1., 1., 1.]
+    # milestones: [10, 20, 50, 100, 200]
+    # init_len: 1s
+
+  predict_and_plot_trajectory:
+    nsteps: 1000
+    Dt: 0.125
+    save_predictions: false
+    log_freq: 10
+
+  monitor_parameters:
+    param_names: ['w1', 'w2', 'w3']
+  
+  # early_stopping:
+  #   monitor: val/loss
+  #   patience: 20
+
+loggers:
+  wandb:
+    group: fpu

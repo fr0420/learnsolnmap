@@ -8,7 +8,7 @@ import torch
 class FirstOrderODE:
     """
     First-order ODE of the form 
-        dx / dt = f(x, t)
+        dx / dt = f(x, t, p)
     """
     def __init__(self, f):
         if not callable(f):
@@ -18,17 +18,17 @@ class FirstOrderODE:
     @classmethod
     def from_dynamical_ode(cls, dynamical_ode):
         """Convert a dynamical ODE to a first-order ODE."""
-        def f(u, t):
+        def f(u, t, p):
             v, x = u.chunk(2, dim=-1)
-            return torch.cat((dynamical_ode.f1(x, t), dynamical_ode.f2(v)), dim=-1)
+            return torch.cat((dynamical_ode.f1(x, t, p), dynamical_ode.f2(v, p)), dim=-1)
         return cls(f)
 
 
 class DynamicalODE:
     """
     Dynamical ODE of the form
-        dv / dt = f1(x, t)
-        dx / dt = f2(v)
+        dv / dt = f1(x, t, p)
+        dx / dt = f2(v, p)
     """
 
     def __init__(self, f1, f2):
@@ -67,13 +67,15 @@ class Integrator:
         """
         raise NotImplementedError("Method '__call__' not implemented.")
    
-    def compute_residual(self, x_n, x_n_plus_1, t_n):
+    def compute_residual(self, x_n, x_n_plus_1, t_n, h, p):
         """
         Compute the residual for a given step.
         
         :param x_n: state at the current step (batch_size, dim)
         :param x_n_plus_1: state at the next step (batch_size, dim)
         :param t_n: current time (batch_size, 1)
+        :param h: stepsize (batch_size, 1) or scalar
+        :param p: parameters (a dictionary of tensors each of shape (batch_size, 1))
         
         :returns: residual (batch_size, dim)
         """

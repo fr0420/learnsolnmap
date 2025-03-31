@@ -1,3 +1,5 @@
+from typing import Dict, Optional, Callable
+
 import torch
 from torch import nn
 from networks.basics import LambdaLayer, Scaler
@@ -78,15 +80,12 @@ class MeanEnergyNormSquaredLoss(nn.Module):
     def __init__(self, problem: SeparableHamiltonianSystem, reduction: str = "mean") -> None:
         super().__init__()
 
-        self.transform: nn.Module = LambdaLayer(
-            problem.transform_to_energy_components, 
-            "transform_to_energy_components"
-        )
+        self.transform: Callable = problem.transform_to_energy_components
         self.reduction: str = reduction
     
-    def forward(self, input: Tensor, target: Tensor):
-        input = self.transform(input)
-        target = self.transform(target)
+    def forward(self, input: Tensor, target: Tensor, p: Optional[Dict[str, Tensor]]):
+        input = self.transform(input, p)
+        target = self.transform(target, p)
         return nn.functional.mse_loss(input, target, reduction=self.reduction)
 
 

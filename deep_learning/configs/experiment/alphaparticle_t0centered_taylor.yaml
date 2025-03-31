@@ -1,17 +1,17 @@
 # @package _global_
 
 # to execute this experiment run:
-# python train.py experiment=threebody2d_equalmass_t0centered
+# python train.py experiment=alphaparticle_t0centered_taylor
 
 defaults:
   - override /datamodule: default
-  - override /module: t0centered
-  - override /module/problem: threebody2d
-  - override /module/loss: anchoredenergynormsquared
+  - override /module: t0centered_taylor
+  - override /module/problem: alphaparticle
+  - override /module/loss: energynormsquared
   - override /module/optimizer: adamw
   - override /module/scheduler: 1cycle
-  - override /module/network@module.net_T0: modmlp
-  - override /module/network@module.net_residual: modmlp 
+  - override /module/network@module.net_T0: piratenet
+  - override /module/network@module.net_residual: piratenet 
   - override /trainer: gpu
   - override /callbacks: 
     - hparams_updater
@@ -29,60 +29,24 @@ defaults:
 
 datamodule:
   train:
-    # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version6/Dt=5e-1_filtered/train
-    data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/Dt=5e-1_filtered/train
-    Dt: 0.5
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/alphaparticle/eps=2.7e-1/version1/Dt=1e1/train
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/alphaparticle/eps_mixed/version5/Dt=1e1/train
+    Dt: 10.0
     # Dt_range: [-1, 1]
     sequence_len: 2
-    downsample_factor: 1.0
-    required_params: ['largest_eigval', 'h_max']
-    # param_filters:
-    #   largest_eigval:
-    #     max: 10.0
+    downsample_factor: 0.1
+    required_params: ['epsilon']
   test:
-    # data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version6/Dt=5e-1_filtered/test
-    data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version8/Dt=5e-1_filtered/test
-    Dt: 0.5
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/alphaparticle/eps=2.7e-1/version1/Dt=1e1/test
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/alphaparticle/eps_mixed/version5/Dt=1e1/test
+    Dt: 10.0
     # Dt_range: [-1, 1]
     sequence_len: 2
-    downsample_factor: 1.0
-    required_params: ['largest_eigval', 'h_max']
-    # param_filters:
-    #   largest_eigval:
-    #     max: 10.0
-  batch_size: 100
+    downsample_factor: 0.1
+    required_params: ['epsilon']
+  batch_size: 400
   num_workers: 0
 
-  # supervised:
-  #   train:
-  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version6/Dt=5e-1_filtered/train
-  #     Dt: 0.5
-  #     # Dt_range: [-1, 1]
-  #     sequence_len: 2
-  #     downsample_factor: 1.0
-  #   test:
-  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version6/Dt=5e-1_filtered/test
-  #     Dt: 0.5
-  #     # Dt_range: [-1, 1]
-  #     sequence_len: 2
-  #     downsample_factor: 1.0
-  #   batch_size: 100
-
-  # unsupervised:
-  #   train:
-  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version6/inputs/train
-  #     Dt: 0.0
-  #     sequence_len: 1
-  #     downsample_factor: 1.0
-  #   test:
-  #     data_dir: /workspace/projects_rui/learnsolnmap/data1/3body-2d-equalmass/version6/inputs/test
-  #     Dt: 0.0
-  #     sequence_len: 1
-  #     downsample_factor: 1.0
-  #   batch_size: 2000
-  
-  # num_workers: 0
-  # pin_memory: false
 
 trainer:
   max_epochs: -1
@@ -94,12 +58,16 @@ trainer:
   # log_every_n_steps: 4
 
 module:
-  T0: 0.5
+  T0: 10.0
 
-  problem: 
-    m1: 1.0
-    m2: 1.0
-    m3: 1.0
+  problem:
+    epsilon: 0.15
+
+  order: 0
+  
+  preserve_velocity_norm: true
+
+  problem_param_keys: ['epsilon']
 
   use_dimensionless: false
 
@@ -117,31 +85,31 @@ module:
     #     std: 0.05
     #   use_mse: true
     numerical_residual:
-      strength: 0.01
-      # batch_size: 1000
-      adaptive: true
+      strength: 0.1
+      batch_size: 400
       integrator: 
-        method: VelocityVerlet
+        method: ImplicitMidpoint
         stepsize: 0.01
         nsteps: 1
       u0_dist:
-        type: precomputed
+        type: random
       t_dist:
         # type: uniform
         # min: 0.0
         # max: 10.0
         type: normal
-        mean: 0.5
-        std: 0.05
+        mean: 10.0
+        std: 1.0
         # type: precomputed
       use_mse: false
 
   # loss:
-  #   weight: [1e2, 1e2, 1e0, 1e0, 1e-3, 1e-3, 1e0, 1e0, 1e0, 1e0, 1e0, 1e0]
-  #   # weight: [1e4, 1e4, 1e0, 1e0, 1e0, 1e0, 1e0, 1e0, 1e-4, 1e-4, 1e-4, 1e-4]
 
   optimizer:
-    lr: 1e-4
+    lr: 5e-4
+    # nesterov: True
+    # momentum: 0.9
+    # weight_decay: 0.0
   
   scheduler:
     scheduler:
@@ -171,19 +139,25 @@ module:
   #   stds:  [1., 1., 1.e-4, 1., 1., 1.e-4, 1.e-3, 1.e-3, 1.e-4, 1., 1., 1.e-4, 100., 100., 0.01, 100, 100, 0.5]
 
   net_T0:
-    input_dim: 12
-    output_dim: 12
+    input_dim: 9
+    output_dim: 4
     hidden_dim: 1000
-    n_hidden_layers: 6
+    # n_hidden_layers: 6
+    n_blocks: 2
+    n_linears_per_block: 3
+    use_branched_output_layers: true
     # n_henon_layers: 16
     # activation:
     #   _target_: torch.nn.Tanh
 
   net_residual:
-    input_dim: 13 
-    output_dim: 12
+    input_dim: 10 
+    output_dim: 4
     hidden_dim: 1000
-    n_hidden_layers: 6
+    # n_hidden_layers: 6
+    n_blocks: 2
+    n_linears_per_block: 3
+    use_branched_output_layers: true
     # n_henon_layers: 16
     # activation:
     #   _target_: torch.nn.Tanh
@@ -200,20 +174,19 @@ callbacks:
     # init_len: 1s
 
   predict_and_plot_trajectory:
-    nsteps: 40
-    Dt: 0.5
+    nsteps: 1000
+    Dt: 10.0
     save_predictions: false
     log_freq: 10
 
   monitor_parameters:
-    # param_names: ['scale', 'mult_w', 'temp_enc.log_frequencies']
-    param_names: ['scale', 'mult_w']
+    param_names: ['w1', 'w2', 'w3']
     every_n_epochs: 5
   
-  early_stopping:
-    monitor: val/loss
-    patience: 20
+  # early_stopping:
+  #   monitor: val/loss
+  #   patience: 20
 
 loggers:
   wandb:
-    group: threebody2d-equalmass
+    group: alphaparticle
