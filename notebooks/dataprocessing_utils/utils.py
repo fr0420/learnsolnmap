@@ -47,8 +47,8 @@ class States:
             raise ValueError("u must be a 1D or 2D array")
         elif len(u.shape) == 1:  # If u is a 1D array, reshape it to a 2D array
             u = u[np.newaxis, :]
-        if u.shape[1] != processor.dof * 2:
-            raise ValueError("Number of columns in u must be equal to 2 * dof. Got {u.shape[1]} columns and dof={processor.dof}.")
+        # if u.shape[1] != processor.dof * 2:
+        #     raise ValueError("Number of columns in u must be equal to 2 * dof. Got {u.shape[1]} columns and dof={processor.dof}.")
 
         self.u = u
         self.processor = processor
@@ -69,6 +69,9 @@ class States:
     def get_vx(self):
         return self.processor.get_vx(self.u)
     
+    def convert_vx_to_pq(self):
+        return self.processor.convert_vx_to_pq(self.u)
+
     def compare(self, other_states):
         """Compare each state of the current set with the corresponding state in another set."""
         if not isinstance(other_states, type(self)):
