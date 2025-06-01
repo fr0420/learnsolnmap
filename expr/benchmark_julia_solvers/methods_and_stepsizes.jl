@@ -76,11 +76,12 @@ function main()
     output_dir = parsed_args["output_dir"]
 
     # set methods and step sizes / number of steps
-    # method_list = ["VelocityVerlet", "CalvoSanz4", "McAte5", "KahanLi6", "KahanLi8"]
-    method_list = ["VelocityVerlet", "CalvoSanz4", "DPRKN4"]
-    nsteps_list = [1, 10, 100, 1000, 10000]
-    # nsteps_list = 2 .^ [0, 1, 2, 3, 4, 5, 6]
-    # nsteps_list = 2 .^ [8, 10, 12, 14, 16]
+    # method_list = ["Euler", "Midpoint", "ImplicitMidpoint", "DP5", "Vern7", "Vern9"]
+    method_list = ["VelocityVerlet", "CalvoSanz4", "DPRKN4", "KahanLi8"]
+    # nsteps_list = [10, 100, 1000, 2000, 10000]
+    # nsteps_list = 2 .^ [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    nsteps_list = 2 .^ [8, 9, 10, 11, 12, 13, 14, 15, 16]
+    # ref_method = "Vern9"
     ref_method = "DPRKN12"
     ref_nsteps = 2^14
     n_methods = length(method_list)
@@ -101,35 +102,65 @@ function main()
         prob = OneBodyKepler(; ecc=0.5)
     elseif problem == "kepler-2body"
         prob = TwoBodyKepler(; g12=1e-5, ecc1=0.4, ecc2=0.5)
+    elseif problem == "3body"
+        prob = ThreeBody(; m1=100., m2=1., m3=0.001, G=1.)
+    elseif problem == "3body-2d"
+        prob = ThreeBody2D(; m1=100., m2=1., m3=0.001, G=1.)
     elseif problem == "nbody"
         prob = NBody()
     elseif problem == "argoncrystal"
         prob = ArgonCrystal()
     elseif problem == "nco"
         prob = NonlinearCoupledOscillators(; epsilon=0.01)
+    elseif problem == "alphaparticle"
+        prob = AlphaParticle(epsilon=0.15)
     end 
-
+    println(prob)
+    
     # generate initial state
-    v0, x0 = initial_condition(prob, Float64)
-    v0_f256, x0_f256 = initial_condition(prob, Float64x4)
-
     println("\nInitial condition:")
-    println("v0: ", v0)
-    println("x0: ", x0)
-    println("H0: ", compute_H(prob, v0, x0))
-    println("K0: ", compute_K(prob, v0))
-    println("U0: ", compute_U(prob, x0))
+    if prob isa AutonomousODESystem
+        u0_f32 = initial_condition(prob, Float32)
+        u0 = initial_condition(prob, Float64)
+        u0_f256 = initial_condition(prob, Float64x4)
+        println("u0: ", u0)
+        println("H0: ", compute_H(prob, u0))
+    elseif prob isa SeparableHamiltonianSystem
+        v0_f32, x0_f32 = initial_condition(prob, Float32)
+        v0, x0 = initial_condition(prob, Float64)
+        v0_f256, x0_f256 = initial_condition(prob, Float64x4)
+        u0_f32 = (v0_f32, x0_f32)
+        u0 = (v0, x0)
+        u0_f256 = (v0_f256, x0_f256)
+        println("v0: ", v0)
+        println("x0: ", x0)
+        println("H0: ", compute_H(prob, v0, x0))
+        println("K0: ", compute_K(prob, v0))
+        println("U0: ", compute_U(prob, x0))
+    end
 
     # define solvers in float64 and float64x4 respectively  
-    phi_Dt_f64 = (method, nsteps) -> ode_solve(
-        (ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), METHODS[method], v0, x0, 0.0, Dt, nsteps, false)
-    phi_Dt_f256 = (method, nsteps) -> ode_solve(
-        (ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), METHODS[method], v0_f256, x0_f256, 0.0, Dt, nsteps, false)
-    
+    if prob isa AutonomousODESystem
+        phi_Dt_f32 = (method, nsteps) -> ode_solve(
+            (du, u, p, t) -> compute_du!(prob, du, u), METHODS[method], u0_f32, 0.0, Dt, nsteps, false)
+        phi_Dt_f64 = (method, nsteps) -> ode_solve(
+            (du, u, p, t) -> compute_du!(prob, du, u), METHODS[method], u0, 0.0, Dt, nsteps, false)
+        phi_Dt_f256 = (method, nsteps) -> ode_solve(
+            (du, u, p, t) -> compute_du!(prob, du, u), METHODS[method], u0_f256, 0.0, Dt, nsteps, false)    
+    elseif prob isa SeparableHamiltonianSystem
+        phi_Dt_f32 = (method, nsteps) -> ode_solve(
+            (ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), METHODS[method], (v0_f32, x0_f32), 0.0, Dt, nsteps, false)
+        phi_Dt_f64 = (method, nsteps) -> ode_solve(
+            (ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), METHODS[method], (v0, x0), 0.0, Dt, nsteps, false)
+        phi_Dt_f256 = (method, nsteps) -> ode_solve(
+            (ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), METHODS[method], (v0_f256, x0_f256), 0.0, Dt, nsteps, false)    
+    end
+
     # compute reference solution 
     println("\nComputing reference solution ...")
     ref_runtime = @elapsed ref_sol = phi_Dt_f256(ref_method, ref_nsteps)
-    
+    println("H error: ", compute_H_err(prob, ref_sol, u0_f256))
+
     println("Computing solutions ...")
     table = []
     for i in 1:n_methods
@@ -138,21 +169,40 @@ function main()
             nsteps = nsteps_list[j]
 
             # compute solution
+            runtime_f32 = @elapsed sol_f32 = phi_Dt_f32(m, nsteps)
             runtime_f64 = @elapsed sol_f64 = phi_Dt_f64(m, nsteps)
             runtime_f256 = @elapsed sol_f256 = phi_Dt_f256(m, nsteps) 
             if j == 1  # re-measure runtime since the function gets compiled on the first call
+                runtime_f32 = @elapsed phi_Dt_f32(m, nsteps)
                 runtime_f64 = @elapsed phi_Dt_f64(m, nsteps)
                 runtime_f256 = @elapsed phi_Dt_f256(m, nsteps)
             end
 
             # compute errors
-            sol_f64 = (Float64x4.(sol_f64[1]), Float64x4.(sol_f64[2]))
+            if prob isa AutonomousODESystem
+                sol_f32 = Float64x4.(sol_f32)
+                sol_f64 = Float64x4.(sol_f64)
+            elseif prob isa SeparableHamiltonianSystem
+                sol_f32 = (Float64x4.(sol_f32[1]), Float64x4.(sol_f32[2]))
+                sol_f64 = (Float64x4.(sol_f64[1]), Float64x4.(sol_f64[2]))
+            end
             rounding_err = compute_traj_err(prob, sol_f64, sol_f256)[1]
+            abs_traj_err_f32, rel_traj_err_f32 = compute_traj_err(prob, sol_f32, ref_sol)
+            abs_H_err_f32, rel_H_err_f32 = compute_H_err(prob, sol_f32, ref_sol)
             abs_traj_err_f64, rel_traj_err_f64 = compute_traj_err(prob, sol_f64, ref_sol)
             abs_H_err_f64, rel_H_err_f64 = compute_H_err(prob, sol_f64, ref_sol)
             abs_traj_err_f256, rel_traj_err_f256 = compute_traj_err(prob, sol_f256, ref_sol)
             abs_H_err_f256, rel_H_err_f256 = compute_H_err(prob, sol_f256, ref_sol)
             
+            row_32 = (
+                method=m, nsteps=nsteps, precision="float32",
+                abs_traj_err=abs_traj_err_f32,
+                rel_traj_err=rel_traj_err_f32,
+                abs_H_err=abs_H_err_f32,
+                rel_H_err=rel_H_err_f32,
+                rounding_err=missing,
+                runtime=runtime_f32
+            )
             row_f64 = (
                 method=m, nsteps=nsteps, precision="float64",
                 abs_traj_err=abs_traj_err_f64,
@@ -171,6 +221,7 @@ function main()
                 rounding_err=missing,
                 runtime=runtime_f256
             )
+            push!(table, row_32)
             push!(table, row_f64)
             push!(table, row_f256)
         end
@@ -198,6 +249,8 @@ function main()
     if parsed_args["plot"]
 
         precision = "float256"
+        df = df[1:end-1, :]  # exclude the reference solution
+
         rel_traj_errors = [
             df[df.precision .== precision .&& df.method .== m, :rel_traj_err] for m in method_list
         ]

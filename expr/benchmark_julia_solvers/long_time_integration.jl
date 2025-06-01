@@ -62,7 +62,7 @@ function phi_Dt_N(
     x0::AbstractArray{T, 1},
     phi_Dt::Function, 
     N::Integer) where T<:AbstractFloat
-    
+
     d = length(v0)
     V = zeros(T, d, N+1)
     X = zeros(T, d, N+1)
@@ -77,24 +77,64 @@ function phi_Dt_N(
 end
 
 
+function phi_Dt_N(
+    u0::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}},
+    phi_Dt::Function, 
+    N::Integer) where T<:AbstractFloat
+    
+    states = Vector{Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}}()
+    push!(states, u0)
+    v, x = copy(u0[1]), copy(u0[2])
+        
+    @showprogress for n in 1:N
+        vnew, xnew = phi_Dt(v, x)
+        push!(states, (vnew, xnew))
+        copyto!(v, vnew)
+        copyto!(x, xnew)
+    end
+
+    return states
+end
+
+
+function phi_Dt_N(
+    u0::AbstractArray{T, 1},
+    phi_Dt::Function, 
+    N::Integer) where T<:AbstractFloat
+    
+    states = Vector{AbstractArray{T, 1}}()
+    push!(states, u0)
+    u = copy(u0)
+        
+    @showprogress for n in 1:N
+        unew = phi_Dt(u)
+        push!(states, (unew))
+        copyto!(u, unew)
+    end
+
+    return states
+end
+
+
 function plot_errors(sol1_filepath, sol2_filepath, compute_err;
     ylabel="error", title="", filepath="./error.png", ymin=1e-20, ymax=1e1)
     
-    V1, X1 = read_csv(sol1_filepath, Float64x4)
-    V2, X2 = read_csv(sol2_filepath, Float64x4)
-    
-    N = size(V1, 2)-1
+    sol1 = read_csv(sol1_filepath, Float64x4)
+    sol2 = read_csv(sol2_filepath, Float64x4)
+    length(sol1) == length(sol2) || error("Length mismatch")
+    N = length(sol1)-1
 
     errors = []
     for n in 2:N+1
-        err = compute_err((V1[:, n], X1[:, n]), (V2[:, n], X2[:, n]))
+        err = compute_err(sol1[n], sol2[n])
         push!(errors, err)
     end
 
     plot(dpi=300)
     plot!((1:N), errors[1:N], label="")
     plot!(ylim=[ymin, ymax])
-    plot!(xaxis=:log, yaxis=:log)
+    # plot!(xaxis=:log)
+    plot!(yaxis=:log)
     plot!(xlabel="n", ylabel=ylabel)
     plot!(title=title)
     plot!(legend=:bottomright)
@@ -107,22 +147,24 @@ end
 
 function plot_errors_against_ref(sol_filepath_list, ref_sol_filepath, compute_err, label_list;
     ylabel="error", title="", filepath="./error.png", ymin=1e-20, ymax=1e1, legend=:bottomright)
-    V_ref, X_ref = read_csv(ref_sol_filepath, Float64x4)
-    N = size(V_ref, 2)-1
+    ref_sol = read_csv(ref_sol_filepath, Float64x4)
+    N = length(ref_sol)-1
 
     plot(dpi=300)
     ls_list = [:solid, :dash, :dot]
     for (sol_filepath, label, ls) in zip(sol_filepath_list, label_list, ls_list)
-        V, X = read_csv(sol_filepath, Float64x4)
+        sol = read_csv(sol_filepath, Float64x4)
+        length(sol) == length(ref_sol) || error("Length mismatch")
         errors = []
         for n in 2:N+1
-            err = compute_err((V[:, n], X[:, n]), (V_ref[:, n], X_ref[:, n]))
+            err = compute_err(sol[n], ref_sol[n])
             push!(errors, err)
         end
         plot!((1:N), errors[1:N], seriescolor=:blue, linestyle=ls, label=label)
     end
     plot!(ylim=[ymin, ymax])
-    plot!(xaxis=:log, yaxis=:log)
+    # plot!(xaxis=:log)
+    plot!(yaxis=:log)
     plot!(xlabel="n", ylabel=ylabel)
     plot!(title=title)
     plot!(legend=legend)
@@ -155,34 +197,56 @@ function main()
     
     # set problem parameters
     if problem == "fpu"
-        prob = FPU(; omega=300.)
+        prob = FPU(; omega=100.)
     elseif problem == "kepler-1body"
         prob = OneBodyKepler(; ecc=0.5)
     elseif problem == "kepler-2body"
         prob = TwoBodyKepler(; g12=1e-5, ecc1=0.4, ecc2=0.5)
+    elseif problem == "3body"
+        prob = ThreeBody(; m1=100., m2=1., m3=0.001, G=1.)
+    elseif problem == "3body-2d"
+        prob = ThreeBody2D(; m1=100., m2=1., m3=0.001, G=1.)
     elseif problem == "nbody"
         prob = NBody()
     elseif problem == "argoncrystal"
         prob = ArgonCrystal()
     elseif problem == "nco"
         prob = NonlinearCoupledOscillators(; epsilon=0.01)
+    elseif problem == "alphaparticle"
+        prob = AlphaParticle(epsilon=0.15)
     end 
+    println(prob)
 
     # generate initial state
-    v0, x0 = initial_condition(prob, Float64)
-    v0_f128, x0_f128 = initial_condition(prob, Float64x2)
-    v0_f256, x0_f256 = initial_condition(prob, Float64x4)
-
     println("\nInitial condition:")
-    println("v0: ", v0)
-    println("x0: ", x0)
-    println("H0: ", compute_H(prob, v0, x0))
-    println("K0: ", compute_K(prob, v0))
-    println("U0: ", compute_U(prob, x0))
+    if prob isa AutonomousODESystem
+        u0 = initial_condition(prob, Float64)
+        u0_f128 = initial_condition(prob, Float64x2)
+        u0_f256 = initial_condition(prob, Float64x4)
+        println("u0: ", u0)
+        println("H0: ", compute_H(prob, u0))
+    elseif prob isa SeparableHamiltonianSystem
+        v0, x0 = initial_condition(prob, Float64)
+        v0_f128, x0_f128 = initial_condition(prob, Float64x2)
+        v0_f256, x0_f256 = initial_condition(prob, Float64x4)
+        u0 = (v0, x0)
+        u0_f128 = (v0_f128, x0_f128)
+        u0_f256 = (v0_f256, x0_f256)
+        println("v0: ", v0)
+        println("x0: ", x0)
+        println("H0: ", compute_H(prob, v0, x0))
+        println("K0: ", compute_K(prob, v0))
+        println("U0: ", compute_U(prob, x0))
+    end
 
     # define solvers 
-    phi_Dt = (v, x) -> ode_solve((ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), METHODS[method], v, x, 0.0, Dt, nsteps, false)
-    phi_Dt_ref = (v, x) -> ode_solve((ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), METHODS[ref_method], v, x, 0.0, Dt, ref_nsteps, false)
+    if prob isa AutonomousODESystem
+        phi_Dt = u -> ode_solve((du, u, p, t) -> compute_du!(prob, du, u), METHODS[method], u, 0.0, Dt, nsteps, false)
+        phi_Dt_ref = u -> ode_solve((du, u, p, t) -> compute_du!(prob, du, u), METHODS[ref_method], u, 0.0, Dt, ref_nsteps, false)
+    elseif prob isa SeparableHamiltonianSystem
+        phi_Dt = (v, x) -> ode_solve((ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), METHODS[method], (v, x), 0.0, Dt, nsteps, false)
+        phi_Dt_ref = (v, x) -> ode_solve((ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), METHODS[ref_method], (v, x), 0.0, Dt, ref_nsteps, false)
+    end
     
     # compute solutions
     filepath_f64 = "$output_dir/$method/float64/N=$(N)_Dt=$(@sprintf("%.2e", Dt))_nsteps=$nsteps/sol.csv"
@@ -192,8 +256,8 @@ function main()
 
     println("Computing solution in float64 precision ...")
     if ~ispath(filepath_f64)
-        V, X = phi_Dt_N(v0, x0, phi_Dt, N)
-        save_csv(filepath_f64, V, X)
+        states = phi_Dt_N(u0, phi_Dt, N)
+        save_csv(filepath_f64, states)
     else
         println("Solution file exists. Skipping integration.")
     end
@@ -201,8 +265,8 @@ function main()
     
     println("Computing solution in float128 precision ...")
     if ~ispath(filepath_f128)
-        V, X = phi_Dt_N(v0_f128, x0_f128, phi_Dt, N)
-        save_csv(filepath_f128, V, X)
+        states = phi_Dt_N(u0_f128, phi_Dt, N)
+        save_csv(filepath_f128, states)
     else
         println("Solution file exists. Skipping integration.")
     end
@@ -210,8 +274,8 @@ function main()
 
     println("Computing solution in float256 precision ...")
     if ~ispath(filepath_f256)
-        V, X = phi_Dt_N(v0_f256, x0_f256, phi_Dt, N)
-        save_csv(filepath_f256, V, X)
+        states = phi_Dt_N(u0_f256, phi_Dt, N)
+        save_csv(filepath_f256, states)
     else
         println("Solution file exists. Skipping integration.")
     end
@@ -219,8 +283,8 @@ function main()
 
     println("Computing reference solution in float256 precision ...")
     if ~ispath(filepath_ref)
-        V, X = phi_Dt_N(v0_f256, x0_f256, phi_Dt_ref, N)
-        save_csv(filepath_ref, V, X)
+        states = phi_Dt_N(u0_f256, phi_Dt_ref, N)
+        save_csv(filepath_ref, states)
     else
         println("Solution file exists. Skipping integration.")
     end
