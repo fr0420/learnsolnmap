@@ -50,7 +50,7 @@ datamodule:
 
 trainer:
   max_epochs: -1
-  max_steps: 1000000
+  max_steps: 10000000
   min_steps: 500000
   # gradient_clip_val: 2.0
   # gradient_clip_algorithm: value
@@ -73,7 +73,7 @@ module:
     #   strength: 1.0
     numerical_residual:
       strength: 1.0
-      batch_size: 800
+      batch_size: 1600
       integrator: 
         method: VelocityVerlet
         stepsize: 0.01
@@ -122,13 +122,13 @@ module:
   #   weight: [0.01, 1., 0.01, 1.]
   
   optimizer:
-    lr: 5e-4
-    # weight_decay: 0.0
+    lr: 5e-5
+    weight_decay: 0.0
   
   scheduler:
     scheduler:
-      total_steps: 1000000
-      pct_start: 0.1
+      total_steps: 5000000
+      pct_start: 0.0
       # factor: 0.9
       # patience: 8
       # patience: 5000

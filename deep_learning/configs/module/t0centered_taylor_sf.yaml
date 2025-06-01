@@ -1,0 +1,24 @@
+_target_: modules.variable_timestep_taylor_sf.SFTaylorBasedT0CenteredSolutionMap
+
+defaults:
+  - problem: fpu
+  - optimizer: adamw
+  - scheduler: 1cycle
+  - loss: energynormsquared
+  - network@net_T0: modmlp
+  - network@net_residual_slow: modmlp
+  - network@net_residual_fast: modmlp
+  - _self_
+
+T0: ???
+
+order_slow: 1
+order_fast: 0
+
+multiplier_activation:
+  _target_: torch.nn.Tanh
+
+loss_hparams: null
+use_dimensionless: true
+
+weight_init: xavier_uniform

@@ -2,9 +2,9 @@
 
 defaults:
   - default
-  - override /module/problem: argoncrystal
-  - override /module/network: tiramisu
-  - override /module/loss: mse
+  - override /module/problem: fpu
+  - override /module/network: enc-resblocks-dec
+  - override /module/loss: anchoredenergynormsquared
   - override /trainer: gpu
   - override /callbacks: 
     - fixed_seq_weights
@@ -21,8 +21,8 @@ trainer:
 
 callbacks:
   fixed_seq_weights:
-    weights: [1., 1., 1., 1., 1.]
-    # weights: [1., 1., 1., 0., 0.]
+    # weights: [1.,]
+    weights: [1., 1., 1., 1., 0., 0.]
   # seq_len_scheduler:
   #   milestones: [3,6]
   #   init_len: 3
@@ -31,15 +31,15 @@ callbacks:
 module:
   use_dimensionless_for_loss: True
 
-  network:
-    h2h:
+  # network:
+  #   h2h:
       # input_dim: 28 
       # output_dim: 28 
       # hidden_dim: 500
       # n_hidden_layers: 4
       # n_blocks: 2
       # n_linears_per_block: 3 
-      in_features: 28
+      # in_features: 28
       # expand_blocks: [4]
       # shrink_blocks: [4] 
       # bottleneck_layers: 4

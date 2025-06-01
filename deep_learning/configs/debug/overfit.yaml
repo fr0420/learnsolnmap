@@ -1,0 +1,122 @@
+# @package _global_
+
+defaults:
+  - default
+  - override /datamodule: default
+  - override /module: t0centered
+  - override /module/problem: alphaparticle
+  - override /module/loss: mse
+  - override /module/optimizer: adamw
+  - override /module/scheduler: none
+  - override /module/network@module.net_T0: modmlp
+  - override /module/network@module.net_residual: modmlp 
+  - override /trainer: gpu
+  - override /loggers: 
+    - csv
+  - override /callbacks: 
+    - fixed_seq_weights
+    - tqdm_progress_bar
+
+seed: 42
+
+datamodule:
+  train:
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/alphaparticle/eps=5e-2/version1/Dt=1e1/train
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/alphaparticle/eps_mixed/version2/Dt=1e1/train
+    Dt: 10.0
+    # Dt_range: [-1, 1]
+    sequence_len: 2
+    downsample_factor: 0.0001
+    required_params: ['epsilon']
+  test:
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/alphaparticle/eps=5e-2/version1/Dt=1e1/test
+    data_dir: /workspace/projects_rui/learnsolnmap/data1/alphaparticle/eps_mixed/version2/Dt=1e1/test
+    Dt: 10.0
+    # Dt_range: [-1, 1]
+    sequence_len: 2
+    downsample_factor: 0.0001
+    required_params: ['epsilon']
+  batch_size: 80
+  num_workers: 0
+
+trainer:
+  max_epochs: 1000
+  # gradient_clip_val: 2.0
+  # gradient_clip_algorithm: value
+  log_every_n_steps: 1
+
+loggers:
+  csv:
+    save_dir: ${paths.output_dir}
+
+callbacks:
+  fixed_seq_weights:
+    weights: [0., 1.]
+
+module:
+  T0: 10.0
+  
+  problem:
+    epsilon: 0.15
+
+  use_dimensionless: false
+
+  problem_param_keys: ['epsilon']
+
+  loss_hparams:
+    data_misfit: 
+      strength: 1.0
+    # numerical_residual:
+    #   strength: 1.0
+    #   batch_size: 100
+    #   integrator: 
+    #     method: ImplicitMidpoint
+    #     stepsize: 0.1
+    #     nsteps: 1
+    #   u0_dist:
+    #     type: random
+    #   t_dist:
+    #     type: uniform
+    #     min: 0.
+    #     max: 20.
+    #     # type: normal
+    #     # mean: 0.
+    #     # std: 5.
+    #   use_mse: true
+  
+  optimizer:
+    lr: 1e-3
+    weight_decay: 0.0
+  
+  # scheduler:
+  #   scheduler:
+  #     total_steps: 1000000
+  #     pct_start: 0.1
+  #     # factor: 0.9
+  #     # patience: 8
+  #     # patience: 5000
+    
+  #   extras:
+  #     monitor: step_loss
+  #     interval: step
+  
+  multiplier_activation:
+    _target_: torch.nn.Tanh
+
+  # network:
+  #   input_dim: 6
+  #   output_dim: 4
+  #   hidden_dim: 1000
+  #   n_hidden_layers: 6
+  
+  net_T0:
+    input_dim: 5
+    output_dim: 4
+    hidden_dim: 1000
+    n_hidden_layers: 4
+
+  net_residual:
+    input_dim: 6 
+    output_dim: 4
+    hidden_dim: 1000
+    n_hidden_layers: 4

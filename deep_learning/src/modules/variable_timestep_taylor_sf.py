@@ -259,7 +259,7 @@ class SFTaylorBasedIdentityEnforcedSolutionMap(SolutionMapWithFSlowFast):
         return out
     
     def extra_repr(self):
-        return super(SFTaylorBasedIdentityEnforcedSolutionMap, self).extra_repr() + f"\norder_slow: {self.order_slow},\norder_fast: {self.order_fast}"
+        return super(SFTaylorBasedIdentityEnforcedSolutionMap, self).extra_repr() + f"\norder_slow: {self.order_slow}\norder_fast: {self.order_fast}"
 
 
 class SFTaylorBasedT0CenteredSolutionMap(SolutionMapWithFSlowFast):
@@ -275,17 +275,22 @@ class SFTaylorBasedT0CenteredSolutionMap(SolutionMapWithFSlowFast):
         self,
         T0: float,
         net_T0: DictConfig,
-        net_residual: DictConfig,
+        net_residual_slow: DictConfig,
+        net_residual_fast: DictConfig,
         multiplier_activation: Optional[DictConfig] = None,
         temporal_encoding: Optional[DictConfig] = None,
         feature_normalization: Optional[DictConfig] = None,
         preserve_velocity_norm: bool = False,
-        order: int = 1,
+        use_dudt: bool = True,
+        order_slow: int = 1,
+        order_fast: int = 0,
         **kwargs
     ) -> None:
-        super(TaylorBasedT0CenteredSolutionMap, self).__init__(
-            order=order,
-            network=net_residual,
+        super(SFTaylorBasedT0CenteredSolutionMap, self).__init__(
+            order_slow=order_slow,
+            order_fast=order_fast,
+            network_slow=net_residual_slow,
+            network_fast=net_residual_fast,
             multiplier_activation=multiplier_activation,
             temporal_encoding=temporal_encoding,
             feature_normalization=feature_normalization,
@@ -302,6 +307,7 @@ class SFTaylorBasedT0CenteredSolutionMap(SolutionMapWithFSlowFast):
         else:
             self.net_T0 = hydra.utils.instantiate(net_T0)
         self.preserve_velocity_norm = PreserveVelocityNorm() if preserve_velocity_norm else None
+        self.use_dudt = use_dudt
 
         if self.weight_init is not None:
             self._init_weights()
@@ -314,11 +320,11 @@ class SFTaylorBasedT0CenteredSolutionMap(SolutionMapWithFSlowFast):
 
         u0 = self._apply_nondim(u0, p)
         net_T0_out = self._apply_net_T0(u0, p)
-        out = net_T0_out + self._apply_F(net_T0_out, t-self.T0, p)
-        if self.preserve_velocity_norm is not None:
-            out = self.preserve_velocity_norm(u0, out)
-        out = self._apply_dim(out, p)
-
+        # out = net_T0_out + self._apply_F(net_T0_out, t-self.T0, p)
+        # if self.preserve_velocity_norm is not None:
+        #     out = self.preserve_velocity_norm(u0, out)
+        # out = self._apply_dim(out, p)
+        out = self._apply_dim(net_T0_out, p)
         return out
 
     def _apply_net_T0(self, u0: torch.Tensor, p: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
@@ -334,55 +340,16 @@ class SFTaylorBasedT0CenteredSolutionMap(SolutionMapWithFSlowFast):
             return self._apply_nondim(out, p)  # switch back to nondimensional space
         else:
             # a standard neural network expects nondimensional inputs
-            # switch to dimensional space to compute f(u, p) then switch back to nondimensional space
-            du0 = self.problem.compute_du(self._apply_dim(u0, p), None, p)
-            du0 = self._apply_nondim(du0, p, deriv_mode=True)
-            out = self.net_T0(torch.cat([du0, u0] + self.prepare_params_input(p), dim=-1))
+            if self.use_dudt:
+                # switch to dimensional space to compute f(u, p) then switch back to nondimensional space
+                du0 = self.problem.compute_du(self._apply_dim(u0, p), None, p)
+                du0 = self._apply_nondim(du0, p, deriv_mode=True)
+                out = self.net_T0(torch.cat([du0, u0] + self.prepare_params_input(p), dim=-1))
+            else:
+                out = self.net_T0(torch.cat([u0] + self.prepare_params_input(p), dim=-1))
             if self.preserve_velocity_norm is not None:
                 out = self.preserve_velocity_norm(u0, out)
             return out
 
     def extra_repr(self):
-        return super(TaylorBasedT0CenteredSolutionMap, self).extra_repr() + f"\nT0: {self.T0.item()}\norder: {self.order}"
-    
-    @classmethod
-    def from_pretrained_net_T0(
-        cls,
-        ckpt_path: str,
-        pretrained_class: str,
-        T0: float,
-        net_residual: DictConfig,
-        multiplier_activation: Optional[DictConfig] = None,
-        temporal_encoding: Optional[DictConfig] = None,
-        feature_normalization: Optional[DictConfig] = None,
-        preserve_velocity_norm: bool = False,
-        pretrained_frozen: bool = True,
-        **kwargs
-    ) -> "TaylorBasedT0CenteredSolutionMap":
-
-        ckpt = torch.load(ckpt_path)
-        config = ckpt["hyper_parameters"]
-        state_dict = ckpt["state_dict"]
-        config["_target_"] = pretrained_class
-
-        solnmap = cls(
-            T0=T0,
-            net_T0=config,
-            net_residual=net_residual,
-            multiplier_activation=multiplier_activation,
-            temporal_encoding=temporal_encoding,
-            feature_normalization=feature_normalization,
-            preserve_velocity_norm=preserve_velocity_norm,
-            **kwargs
-        )
-        solnmap.net_T0.load_state_dict(state_dict, strict=True)
-
-        if isinstance(solnmap.net_T0, FixedStepSolutionMap):
-            if solnmap.net_T0.T0 != T0:
-                raise ValueError("T0 must match the fixed timestep of the pretrained model.")
-
-        if pretrained_frozen:
-            for param in solnmap.net_T0.parameters():
-                param.requires_grad = False
-
-        return solnmap
+        return super(SFTaylorBasedT0CenteredSolutionMap, self).extra_repr() + f"\nT0: {self.T0.item()}\norder_slow: {self.order_slow}\norder_fast: {self.order_fast}"

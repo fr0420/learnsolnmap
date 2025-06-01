@@ -2,7 +2,7 @@ import torch
 from modules.fixed_timestep import FixedStepSolutionMap
 from modules.variable_timestep import IdentityEnforcedSolutionMap, T0CenteredSolutionMap, StackedSolutionMap
 from modules.variable_timestep_taylor import TaylorBasedIdentityEnforcedSolutionMap, TaylorBasedT0CenteredSolutionMap
-from modules.variable_timestep_taylor_sf import SFTaylorBasedIdentityEnforcedSolutionMap
+from modules.variable_timestep_taylor_sf import SFTaylorBasedIdentityEnforcedSolutionMap, SFTaylorBasedT0CenteredSolutionMap
 
 def load_model_from_ckpt(ckpt_path, model_name="T0CenteredSolutionMap", strict=True):
     """
@@ -43,6 +43,7 @@ def load_model_from_ckpt(ckpt_path, model_name="T0CenteredSolutionMap", strict=T
         "TaylorBasedIdentityEnforcedSolutionMap": TaylorBasedIdentityEnforcedSolutionMap,
         "TaylorBasedT0CenteredSolutionMap": TaylorBasedT0CenteredSolutionMap,
         "SFTaylorBasedIdentityEnforcedSolutionMap": SFTaylorBasedIdentityEnforcedSolutionMap,
+        "SFTaylorBasedT0CenteredSolutionMap": SFTaylorBasedT0CenteredSolutionMap,
         # "ODEEmbeddedIdentityEnforcedSolutionMap": TaylorBasedIdentityEnforcedSolutionMap,
         # "ODEEmbeddedT0CenteredSolutionMap": TaylorBasedT0CenteredSolutionMap,
         "VariableDtSolutionMap": IdentityEnforcedSolutionMap,

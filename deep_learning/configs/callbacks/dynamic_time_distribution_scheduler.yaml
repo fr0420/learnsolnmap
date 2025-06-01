@@ -1,0 +1,6 @@
+dynamic_time_distribution_scheduler:
+  _target_: callbacks.hparams_updater.DynamicTimeDistributionScheduler
+  by_epoch: false
+  monitor: val/loss
+  threshold: 0.01
+  growth_factor: 2.0

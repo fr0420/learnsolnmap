@@ -30,12 +30,13 @@ class SymplecticIntegrator(Integrator):
         """Return a string representation of the integrator."""
         return f"{self.__class__.__name__}(interval=[0, {self.T}], h={self.h}, nsteps={self.nsteps}, f1={self.f1.__name__}, f2={self.f2.__name__})"
     
-    def __call__(self, u0, t0=None, retfull=False):
+    def __call__(self, u0, t0=None, p=None, retfull=False):
         """
         Integrate the ODE given the concatenated initial state u0 = [v0, x0].
         
         :param u0: initial state u0 = [v0, x0] (batch_size, 2*dim)
         :param t0: initial time (batch_size, 1)
+        :param p: parameters (a dictionary of tensors each of shape (batch_size, 1))
         :param retfull: whether or not to return solutions at all time points
         
         :returns: sequence of states (nsteps + 1, batch_size, 2*dim) if retfull is True, otherwise 
@@ -44,7 +45,7 @@ class SymplecticIntegrator(Integrator):
         if t0 is None:
             t0 = torch.zeros_like(u0)[:, :1]
         v0, x0 = u0.chunk(2, dim=-1)
-        v, x, _ = self.integrate(v0, x0, t0, self.nsteps, retfull)
+        v, x, _ = self.integrate(v0, x0, t0, p, self.nsteps, retfull)
         return torch.cat((v, x), dim=-1)
     
     def compute_residual(self, u_n, u_n_plus_1, t_n, h, p):
@@ -79,13 +80,14 @@ class SymplecticIntegrator(Integrator):
         """
         raise NotImplementedError("Method 'step' not implemented.")
     
-    def integrate(self, v0, x0, t0, nsteps, retfull=False):
+    def integrate(self, v0, x0, t0, p, nsteps, retfull=False):
         """
         Integrate the ODE.
 
         :param v0: initial v (batch_size, dim)
         :param x0: initial x (batch_size, dim)
         :param t0: initial time (batch_size, 1)
+        :param p: parameters (a dictionary of tensors each of shape (batch_size, 1))
         :param nsteps: number of time steps
         :param retfull: whether or not to return solutions at all time points
 
@@ -93,19 +95,19 @@ class SymplecticIntegrator(Integrator):
                   sequence of times (nsteps + 1, batch_size, 1) if retfull is True, otherwise only the final 
                   v (batch_size, dim), x (batch_size, dim) and time (batch_size, 1)
         """
-        dt = torch.arange(nsteps+1) * self.h
+        dt = torch.arange(nsteps+1, dtype=v0.dtype).to(v0.device) * self.h
 
         if retfull:
             batch_size, dim = x0.shape
-            trajectory_v = torch.zeros((nsteps+1, batch_size, dim))
-            trajectory_x = torch.zeros((nsteps+1, batch_size, dim))
+            trajectory_v = torch.zeros((nsteps+1, batch_size, dim), dtype=v0.dtype).to(v0.device)
+            trajectory_x = torch.zeros((nsteps+1, batch_size, dim), dtype=x0.dtype).to(v0.device)
             trajectory_v[0] = v0
             trajectory_x[0] = x0
 
             v = v0
             x = x0
             for i in range(nsteps):
-                v, x = self.step(v, x, t0 + dt[i], self.h)  # v_{i+1}, x_{i+1} = step(v_i, x_i, t_i, h)
+                v, x = self.step(v, x, t0 + dt[i], self.h, p)  # v_{i+1}, x_{i+1} = step(v_i, x_i, t_i, h)
                 trajectory_v[i+1] = v
                 trajectory_x[i+1] = x
             return trajectory_v, trajectory_x, dt[:, None, None] + t0
@@ -114,7 +116,7 @@ class SymplecticIntegrator(Integrator):
             v = v0
             x = x0
             for i in range(nsteps):
-                v, x = self.step(v, x, t0 + dt[i], self.h)
+                v, x = self.step(v, x, t0 + dt[i], self.h, p)
             return v, x, t0 + dt[-1]
 
 

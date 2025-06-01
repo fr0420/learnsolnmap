@@ -13,8 +13,7 @@ defaults:
     # - model_checkpoint
   - override /module/scheduler: none
   - override /trainer: gpu
-
-loggers: null
+  - override /loggers: null
 
 # runs 1 full epoch
 trainer:

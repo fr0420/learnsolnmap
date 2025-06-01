@@ -89,11 +89,29 @@ class CollocationPointsGenerator:
                 p=state_params
             )
         else:  # single_time losses
-            return CollocationPoints(
-                u0=initial_states,
-                t=self._get_timesteps(batch_size, params["t_dist"], t),
-                p=state_params
-            )
+            if params["t_dist"]["type"] == "uniform_grid":
+                grid = self._prepare_random_timesteps(batch_size, params["t_dist"])  # shape: (batch_size, M)
+                _, M = grid.shape
+
+                new_u0 = initial_states.unsqueeze(1).repeat(1, M, *([1] * (initial_states.dim()-1)))  # shape: (batch_size, M, u0_dim)
+                new_u0 = new_u0.view(-1, *initial_states.shape[1:])  # shape: (batch_size*M, u0_dim)
+
+                if state_params is not None:
+                    new_p = {}
+                    for key, tensor in state_params.items():
+                        new_tensor = tensor.unsqueeze(1).repeat(1, M, *([1] * (tensor.dim()-1)))  # shape: (batch_size, M, p_dim)
+                        new_p[key] = new_tensor.view(-1, *tensor.shape[1:])  # shape: (batch_size*M, p_dim)
+                else:
+                    new_p = None
+
+                new_t = grid.reshape(-1, 1)  # shape: (batch_size*M, 1)
+                return CollocationPoints(u0=new_u0, t=new_t, p=new_p)
+            else:
+                return CollocationPoints(
+                    u0=initial_states,
+                    t=self._get_timesteps(batch_size, params["t_dist"], t),
+                    p=state_params
+                )
 
     def _get_initial_states(
             self, 
@@ -196,6 +214,10 @@ class CollocationPointsGenerator:
                 "generator": lambda batch_size, config: torch.randn(batch_size, 1, device=self.device, dtype=self.dtype) \
                     * config["std"] + config["mean"]
             },
+            "uniform_grid": {
+                "keys": ["h", "Tinit", "Tend"],
+                "generator": self._generate_uniform_grid  # dedicated method for grid generation
+            },
         }
 
         if dist_type not in distribution_map:
@@ -210,3 +232,19 @@ class CollocationPointsGenerator:
         validate_config(dist_config, required_keys)
         generator_func = distribution_map[dist_type]["generator"]
         return generator_func(batch_size, dist_config)
+
+    def _generate_uniform_grid(self, batch_size: int, config: DictConfig) -> torch.Tensor:
+        """Generate a uniform grid of time points for each sample."""
+
+        h = config["h"]
+        Tinit = config["Tinit"]
+        Tend = config["Tend"]
+        T = Tend - Tinit
+        if T <= 0:
+            raise ValueError("Tend must be greater than Tinit.")
+        if h <= 0:
+            raise ValueError("h must be greater than 0.")
+
+        num_steps = int(T / h) + 1
+        grid = torch.arange(num_steps, device=self.device, dtype=self.dtype) * h + Tinit
+        return grid.unsqueeze(0).expand(batch_size, -1)

@@ -14,14 +14,14 @@ def time_forward(model: BaseSolutionMap, nsteps_list: List[int] = [0, 1,]):
     batch_sizes = [1, 64, 128, 512, 1024, 2048]
     devices = [torch.device("cpu")] 
     if torch.cuda.is_available():
-        devices.append(torch.device("cuda:0"))
+        devices.append(torch.device("cuda:1"))
     
     results = []
     for b in batch_sizes:
         for device in devices:
-            u = model.problem.random_states(b).to(device)
-            t = torch.ones(b, 1).to(device) * 8.
-            p = {key: torch.ones(b, 1).to(device) * model.problem.default_params[key] 
+            u = model.problem.random_states(b).to(device).to(model.dtype)
+            t = torch.ones(b, 1, dtype=model.dtype).to(device) * 8.
+            p = {key: torch.ones(b, 1, dtype=model.dtype).to(device) * model.problem.default_params[key] 
                  for key in model.problem_param_keys}
 
             model.to(device)
@@ -46,7 +46,7 @@ def time_backward(model: BaseSolutionMap, nsteps_list: List[int] = [0, 1,]):
     # compare runtime for different batch sizes
     batch_sizes = [1, 64, 128, 512]
 
-    device = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda:0")
+    device = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda:1")
     model.to(device)
     model.update_loss_hparams({"data_misfit": {"strength": 1.0}})
 
@@ -58,9 +58,9 @@ def time_backward(model: BaseSolutionMap, nsteps_list: List[int] = [0, 1,]):
 
     results = []
     for b in batch_sizes:
-        u = model.problem.random_states(b).to(device)
-        t = torch.ones(b, 1).to(device) * 10.
-        p = {key: torch.ones(b, 1).to(device) * model.problem.default_params[key] 
+        u = model.problem.random_states(b).to(device).to(model.dtype)
+        t = torch.ones(b, 1, dtype=model.dtype).to(device) * 10.
+        p = {key: torch.ones(b, 1, dtype=model.dtype).to(device) * model.problem.default_params[key] 
                  for key in model.problem_param_keys}
         label = f"backward time ({device})"
         sub_label=f"u: {u.shape}, t: {t.shape}"
@@ -88,8 +88,8 @@ def outputs_stats(model: BaseSolutionMap, nsteps: int = 5):
     model.to(device)
     # u0 = model._prepare_random_states(batch_size=128)
     u0 = model.problem.default_initial_states().to(model.dtype).to(device)
-    t = torch.ones(len(u0), 1).to(u0) * 10.
-    p = {key: torch.ones(len(u0), 1).to(u0) * model.problem.default_params[key] for key in model.problem_param_keys}
+    t = torch.ones(len(u0), 1, dtype=model.dtype).to(u0) * 1.
+    p = {key: torch.ones(len(u0), 1, dtype=model.dtype).to(u0) * model.problem.default_params[key] for key in model.problem_param_keys}
 
     v0, x0 = u0.chunk(2, dim=-1)
     col = pd.Series(

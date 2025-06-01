@@ -27,7 +27,7 @@ export DATA_DIR=$PROJECT_ROOT/data1/nco/epsilon=1e-2/version22/max_Dt=1e1_min_Dt
 # python3 ../src/train.py experiment=nco_idenf_taylor trainer.devices=[0] init_model_ckpt=/workspace/projects_rui/learnsolnmap/deep_learning/logs/train/runs/20250323-234359_zk28ds/checkpoints/latest-epoch00417.ckpt &
 
 # python3 ../src/train.py experiment=nco_idenf_taylor_sf trainer.devices=[0] &
-python3 ../src/train.py experiment=nco_idenf_taylor_sf trainer.devices=[0] init_model_ckpt=/workspace/projects_rui/learnsolnmap/deep_learning/logs/train/runs/20250329-142604_mngtlq/checkpoints/latest-epoch00417.ckpt &
+python3 ../src/train.py experiment=nco_idenf_taylor_sf trainer.devices=[0] init_model_ckpt=/workspace/projects_rui/learnsolnmap/deep_learning/logs/train/runs/20250330-122239_3a7xcd/checkpoints/latest-epoch00417.ckpt &
 
 
 # python3 ../src/train.py experiment=nco_fixedstep trainer.devices=[0] &

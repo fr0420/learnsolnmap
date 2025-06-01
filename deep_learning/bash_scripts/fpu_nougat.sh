@@ -22,7 +22,11 @@ export DATA_DIR=$PROJECT_ROOT/data1/fpu/omega=50/version2/Dt=1e0
 # python3 ../src/train.py experiment=fpu_idenf_taylor trainer.devices=[0] &
 
 # python3 ../src/train.py experiment=fpu_idenf_taylor_sf trainer.devices=[0] &
-python3 ../src/train.py experiment=fpu_idenf_taylor_sf trainer.devices=[1] init_model_ckpt=/workspace/projects_rui/learnsolnmap/deep_learning/logs/train/runs/20250330-174512_nv964y/checkpoints/latest-epoch00249.ckpt &
+python3 ../src/train.py experiment=fpu_idenf_taylor_sf trainer.devices=[0] init_model_ckpt=/workspace/projects_rui/learnsolnmap/deep_learning/logs/train/runs/20250327-214141_sqgu22/checkpoints/latest-epoch01249.ckpt &
+
+# python3 ../src/train.py experiment=fpu_t0centered_taylor_sf trainer.devices=[0] &
+# python3 ../src/train.py experiment=fpu_t0centered_taylor_sf trainer.devices=[0] init_model_ckpt=/workspace/projects_rui/learnsolnmap/deep_learning/logs/train/runs/20250405-224742_ps17q2/checkpoints/latest-epoch02499.ckpt &
+
 
 # python3 ../src/train.py experiment=fpu_idenf trainer.devices=[1] &
 # python3 ../src/train.py experiment=fpu_identityenforced trainer.devices=[1] resume_from_ckpt=/workspace/projects_rui/learnsolnmap/deep_learning/logs/train/runs/20241023-193612_chqucx/checkpoints/latest-epoch00312.ckpt &

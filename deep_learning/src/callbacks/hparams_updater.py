@@ -84,9 +84,6 @@ class TimeDistributionScheduler(Callback):
             schedule_keys (list): A list of epoch or global step values at which to update the time distribution.
             schedule_values (list): A list of time distribution configurations to apply at the corresponding schedule key.
             by_epoch (bool): If True, use `epoch` for scheduling. If False, use `global_step`.
-        
-        Example:
-            schedule_keys=[5, 10], schedule_values=[0.5, 0.1] means set time distribution to `0.5` at epoch 5 and `0.1` at epoch 10.
         """
         if len(schedule_keys) != len(schedule_values):
             raise ValueError("schedule_keys and schedule_values must have the same length.")
@@ -108,4 +105,59 @@ class TimeDistributionScheduler(Callback):
                 "numerical_residual": {"t_dist": time_distribution},
             }
             logger.info(f"Updated numerical_residual_loss time distribution to {time_distribution} at {'epoch' if self.by_epoch else 'global step'} {current_step}")
+            pl_module.update_loss_hparams(updated_hparams)
+
+
+class DynamicTimeDistributionScheduler(Callback):
+    def __init__(self, monitor: str, by_epoch: bool = True, threshold: float = 1e-2, growth_factor: float = 2.0):
+        """
+        Dynamically update the time distribution configuration based on a monitored metric.
+
+        Args:
+            monitor (str): Name of the metric to monitor (e.g. "val_loss").
+            by_epoch (bool): If True, update at the start of each epoch; if False, update per batch.
+        """
+        self.monitor = monitor
+        self.by_epoch = by_epoch
+        self.threshold = threshold
+        self.growth_factor = growth_factor
+
+    def on_train_epoch_start(self, trainer, pl_module):
+        if self.by_epoch:
+            self._update_time_distribution(trainer.current_epoch, trainer, pl_module)
+
+    def on_train_batch_start(self, trainer, pl_module, batch, batch_idx, dataloader_idx=0):
+        if not self.by_epoch:
+            self._update_time_distribution(trainer.global_step, trainer, pl_module)
+
+    def _update_time_distribution(self, current_step, trainer, pl_module):
+        metric_val = trainer.callback_metrics.get(self.monitor)
+        if metric_val is None:
+            logger.warning(f"Metric '{self.monitor}' not found in callback_metrics. Time distribution not updated.")
+            return
+        
+        current_hparams = pl_module.get_loss_hparams()
+        if "numerical_residual" not in current_hparams:
+            logger.warning("Numerical residual loss hyperparameters not found. Time distribution not updated.")
+            return
+        
+        current_time_distribution = current_hparams["numerical_residual"].get("t_dist")
+        if current_time_distribution.get("type") != "uniform_grid":
+            logger.warning("Current time distribution is not 'uniform_grid'. Time distribution not updated.")
+            return
+
+        if metric_val < self.threshold:
+            
+            current_Tend = current_time_distribution.get("Tend")
+            new_time_distribution = {
+                "Tend": current_Tend * self.growth_factor,
+            }
+
+            updated_hparams = {
+                "numerical_residual": {"t_dist": new_time_distribution},
+            }
+            logger.info(
+                f"Updated numerical_residual_loss time distribution to {new_time_distribution} at {'epoch' if self.by_epoch else 'global step'} {current_step}"
+                f" based on '{self.monitor}' value: {metric_val}"
+            )
             pl_module.update_loss_hparams(updated_hparams)

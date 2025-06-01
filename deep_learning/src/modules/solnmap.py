@@ -74,6 +74,9 @@ class BaseSolutionMap(BaseLitModel):
         initialized_hparams = OmegaConf.create(default_hparams)
         return OmegaConf.merge(initialized_hparams, hparams) if hparams else initialized_hparams
     
+    def get_loss_hparams(self) -> DictConfig:
+        return self.loss_hparams
+
     def update_loss_hparams(self, hparams: DictConfig):
         if hparams is not None:
             self.loss_hparams = OmegaConf.merge(self.loss_hparams, hparams)
