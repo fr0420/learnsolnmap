@@ -253,13 +253,14 @@ function sample_initial_conditions_3body_equilateral(
     v1 ./= r.^1.5 
     v1 .*= sqrt(sin(pi/3)/(2*cos(pi/6)^2))
     v2 = rotate2d(v1, 2*pi/3)
-    v3 = rotate2d(v2, 2*pi/3)
+    # v3 = rotate2d(v2, 2*pi/3)
 
     # make the circular orbits slightly chaotic
     v1 .*= 1 .+ nu.*(2 .* rand(2, num_samples) .- 1)
     v2 .*= 1 .+ nu.*(2 .* rand(2, num_samples) .- 1)
-    v3 .*= 1 .+ nu.*(2 .* rand(2, num_samples) .- 1)
-    
+    # v3 .*= 1 .+ nu.*(2 .* rand(2, num_samples) .- 1)
+    v3 = -v1 - v2
+
     v = vcat(v1, v2, v3)
     x = vcat(q1, q2, q3)
 
@@ -351,6 +352,7 @@ function rhmc_H0_transition(
     ) where T<:AbstractFloat
         
     res = Vector{Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}}(undef, nsteps)
+    # res = Vector{Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}}()
     rejection_counter = [0]
 
     # step 1: momentum refreshment
@@ -359,6 +361,8 @@ function rhmc_H0_transition(
     # step 2: random time integration with accept/reject mechanism
     for n in 1:nsteps
         v_temp, x_temp = random_time_integration(v, x, phi_h, mean_dt_div_h)
+        # states = random_time_integration(v, x, phi_h, mean_dt_div_h)
+        # v_temp, x_temp = states[end]
 
         if with_rejection
             acceptance = compute_acceptance_hmc_H0(v, x, v_temp, x_temp, compute_H, mass)
@@ -367,6 +371,15 @@ function rhmc_H0_transition(
             update_state!(v, x, v_temp, x_temp)
         end
         res[n] = (copy(v), copy(x))
+        # if rejection_counter[1] == 0
+        #     if length(states) > 1
+        #         append!(res, states[2:end])
+        #     else
+        #         push!(res, (copy(v), copy(x)))
+        #     end
+        # else
+        #     push!(res, (copy(v), copy(x)))
+        # end
     end 
 
     return res, rejection_counter[1]
@@ -491,23 +504,33 @@ function refresh_momentum_hmc_H0!(v::AbstractArray{T, 1}, x::AbstractArray{T, 1}
 
     # Scale a random unit vector by 1/sqrt(mass) * sqrt(2K)
     K = 0.5 * v' * (mass .* v)
-    # v .= nSphereSampling(length(v)) ./ sqrt.(mass) * sqrt(2 * K)
-
-    # Temporary solution for 3-body problem: preserve the total momentum and angular momentum
-    q1 = @view x[1:2]
-    q2 = @view x[3:4]
-    q3 = @view x[5:6]
-    p = mass .* v
-    p1 = @view p[1:2]
-    p2 = @view p[3:4]
-    p3 = @view p[5:6]
-    p_tot = p1 + p2 + p3
-    Lz = q1[1]*p1[2] - q1[2]*p1[1] + q2[1]*p2[2] - q2[2]*p2[1] + q3[1]*p3[2] - q3[2]*p3[1]
-    M = Diagonal(T.(mass))
-    A = [1.0 0.0 1.0 0.0 1.0 0.0; 0.0 1.0 0.0 1.0 0.0 1.0; -q1[2] q1[1] -q2[2] q2[1] -q3[2] q3[1]]
-    b = [p_tot[1], p_tot[2], Lz]
-    v .= ellipsoidLinearConstraintsSampling(M, 2*K, A, b) ./ mass
+    v .= nSphereSampling(length(v)) ./ sqrt.(mass) * sqrt(2 * K)
 end
+
+
+# """Refresh the current momentum (velocity) for HMC-H0 algorithms."""
+# function refresh_momentum_hmc_H0!(v::AbstractArray{T, 1}, x::AbstractArray{T, 1}, mass::AbstractArray{Float64, 1}) where T <: AbstractFloat
+
+#     # Scale a random unit vector by 1/sqrt(mass) * sqrt(2K)
+#     K = 0.5 * v' * (mass .* v)
+
+#     # Temporary solution for 3-body problem: preserve the total momentum and angular momentum
+#     q1 = @view x[1:2]
+#     q2 = @view x[3:4]
+#     q3 = @view x[5:6]
+#     p = mass .* v
+#     p1 = @view p[1:2]
+#     p2 = @view p[3:4]
+#     p3 = @view p[5:6]
+#     p_tot = p1 + p2 + p3
+#     Lz = q1[1]*p1[2] - q1[2]*p1[1] + q2[1]*p2[2] - q2[2]*p2[1] + q3[1]*p3[2] - q3[2]*p3[1]
+#     M = Diagonal(T.(mass))
+#     A = [1.0 0.0 1.0 0.0 1.0 0.0; 0.0 1.0 0.0 1.0 0.0 1.0; -q1[2] q1[1] -q2[2] q2[1] -q3[2] q3[1]]
+#     b = [p_tot[1], p_tot[2], Lz]
+#     v_temp = ellipsoidLinearConstraintsSampling(M, 2*K, A, b) ./ mass
+#     # println(norm(v_temp .- v))
+#     v .= v_temp
+# end
 
 
 """Random time integration with a geometrically distributed number of sub-steps."""
@@ -518,8 +541,11 @@ function random_time_integration(v::AbstractArray{T, 1}, x::AbstractArray{T, 1},
 
     # Perform 'm' sub-steps of the integrator phi_h
     v_temp, x_temp = phi_h(v, x, m)
-
+    
     return v_temp, x_temp
+
+    # states, _ = phi_h(v, x, m)
+    # return states
 end
 
 
@@ -536,12 +562,18 @@ function compute_acceptance_hmc_H0(v::AbstractArray{T, 1}, x::AbstractArray{T, 1
     # TODO: implement accept/reject mechanism for HMC-H0 algorithms
     H_temp = compute_H(v_temp, x_temp) 
     H = compute_H(v, x)
-    K_temp = 0.5 * v_temp' * (mass .* v_temp)
+    # K_temp = 0.5 * v_temp' * (mass .* v_temp)
+    # lower = [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0] .* T(2.5)
+    # upper = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0] .* T(2.5)
     return abs(H_temp - H) < 1e-10 ? acceptance = 1.0 : acceptance = 0.0
     # return abs(H_temp - H) < 1e-10 && K_temp < 3.0 ? acceptance = 1.0 : acceptance = 0.0
     # return abs(H_temp - H) < 1e-10 && K_temp < 3.0 && K_temp > 0.3 ? acceptance = 1.0 : acceptance = 0.0
+    # return abs(H_temp - H) < 1e-10 && inside_box(x_temp, lower, upper) ? acceptance = 1.0 : acceptance = 0.0
 end
 
+function inside_box(x::AbstractArray{T, 1}, lower::AbstractArray{T, 1}, upper::AbstractArray{T, 1}) where T<:AbstractFloat
+    return all(lower .<= x .<= upper)
+end
 
 """Update the state based on the acceptance probability."""
 function update_state!(
@@ -585,6 +617,33 @@ if ARGS == ["--run"]
     # Example usage
     using .HMC
 
-    samples = HMC.sample_initial_conditions_3body_equilateral(num_samples=10)
-    println(samples)
+    samples = HMC.sample_initial_conditions_3body_equilateral(num_samples=1, nu=0.1)
+    # println(samples)
+    
+    v, x = samples[1]
+    println(v)
+    println(v[1:2] .+ v[3:4] .+ v[5:6])
+    HMC.refresh_momentum_hmc_H0!(v, x, [1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+
+    v, x = samples[1]
+    v[5:6] .= [0.0, 0.0] - v[1:2] - v[3:4]
+    println(v)
+    println(v[1:2] .+ v[3:4] .+ v[5:6])
+    HMC.refresh_momentum_hmc_H0!(v, x, [1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+
+    # samples = sample_initial_conditions_3body(v, x, [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]; epsilon=0.0)
+    # v, x = samples[1] 
+    # println(v)
+    # println(v[1:2] .+ v[3:4] .+ v[5:6])
+    # HMC.refresh_momentum_hmc_H0!(v, x, [1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+
+    # # equal mass, non-equilateral configuration
+    # v0 = zeros(6)
+    # x0 = zeros(6)
+    # v0[1:6] = [0.07549985 -0.81340487  0.1986117   0.27531269 -0.15989042  0.35567132]  
+    # x0[1:6] = [-1.38436497 -0.62820671  0.4143637  -0.82314002  1.57423108  0.48634039]
+    # println(v0)
+    # println(v0[1:2] .+ v0[3:4] .+ v0[5:6])
+    # HMC.refresh_momentum_hmc_H0!(v0, x0, [1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+    
 end

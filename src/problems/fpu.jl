@@ -23,6 +23,7 @@ function initial_condition(prob::FPU, T::Type)
     q0[1] = (1 - 1/omega)/sqrt2
     q0[2] = (1 + 1/omega)/sqrt2
     p0[2] = sqrt2
+    # p0[2] = 1.0
 
     return p0, q0
 end 
@@ -99,6 +100,118 @@ function compute_I(prob::FPU, v::AbstractArray{T, 1}, x::AbstractArray{T, 1}) wh
     
     return 0.25 * dv_stiff.^2 + 0.25 * omega^2 * dx_stiff.^2
 end
+
+function to_slow_fast_variables(prob::FPU, v::AbstractArray{T, 1}, x::AbstractArray{T, 1}) where T<:AbstractFloat
+    xs = (x[2:2:end] + x[1:2:end]) / sqrt(T(2.))
+    xf = (x[2:2:end] - x[1:2:end]) / sqrt(T(2.))
+    vs = (v[2:2:end] + v[1:2:end]) / sqrt(T(2.))
+    vf = (v[2:2:end] - v[1:2:end]) / sqrt(T(2.))
+    return vs, vf, xs, xf
+end
+
+function to_original_variables(prob::FPU, vs::AbstractArray{T, 1}, vf::AbstractArray{T, 1}, 
+    xs::AbstractArray{T, 1}, xf::AbstractArray{T, 1}) where T<:AbstractFloat
+    x = zeros(T, 2*prob.m)
+    v = zeros(T, 2*prob.m)
+    x[1:2:end] = (xs - xf) / sqrt(T(2.))
+    x[2:2:end] = (xs + xf) / sqrt(T(2.))
+    v[1:2:end] = (vs - vf) / sqrt(T(2.))
+    v[2:2:end] = (vs + vf) / sqrt(T(2.))
+    return v, x
+end
+
+
+function embed_state_interpolative(prob::FPU, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}) where T<:AbstractFloat
+    return vcat(u...)
+end
+
+function align_state_interpolative(prob::FPU, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}, corrector::Any) where T<:AbstractFloat
+    znew = corrector(embed_state_interpolative(prob, u))
+    v = znew[1:2*prob.m]
+    x = znew[2*prob.m+1:end]
+    return (v, x)
+end
+
+# function embed_state_interpolative(prob::FPU, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}) where T<:AbstractFloat
+#     vs, vf, xs, xf = to_slow_fast_variables(prob, u...)
+#     scaled_xf = xf * prob.omega
+#     return vcat(vs, xs, vf, scaled_xf)
+# end
+
+# function align_state_interpolative(prob::FPU, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}, corrector::Any) where T<:AbstractFloat
+#     znew = corrector(embed_state_interpolative(prob, u))
+#     vs = znew[1:prob.m]
+#     vf = znew[prob.m+1:2*prob.m]
+#     xs = znew[2*prob.m+1:3*prob.m]
+#     scaled_xf = znew[3*prob.m+1:end]
+#     xf = scaled_xf / prob.omega
+#     v, x = to_original_variables(prob, vs, vf, xs, xf)
+#     return (v, x)
+# end
+
+
+# function embed_state_procrustes(prob::FPU, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}) where T<:AbstractFloat
+#     vs, vf, xs, xf = to_slow_fast_variables(prob, u...)
+#     scaled_xf = xf * prob.omega
+#     return (vcat(vs, xs), vcat(vf, scaled_xf))
+# end
+
+# function align_state_procrustes(prob::FPU, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}, corrector::Any) where T<:AbstractFloat
+#     znew = corrector(embed_state_procrustes(prob, u))
+#     vs = znew[1][1:prob.m]
+#     xs = znew[1][prob.m+1:end] 
+#     vf = znew[2][1:prob.m]
+#     scaled_xf = znew[2][prob.m+1:end]
+#     xf = scaled_xf / prob.omega
+#     v, x = to_original_variables(prob, vs, vf, xs, xf)
+#     return (v, x)
+# end
+
+
+function embed_state_procrustes(prob::FPU, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}) where T<:AbstractFloat
+    vs, vf, xs, xf = to_slow_fast_variables(prob, u...)
+    scaled_xf = xf * prob.omega
+    return vcat(vf, scaled_xf)
+end
+
+function align_state_procrustes(prob::FPU, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}, corrector::Any) where T<:AbstractFloat
+    vs, _, xs, _ = to_slow_fast_variables(prob, u...)
+    znew = corrector(embed_state_procrustes(prob, u))
+    vf = znew[1:prob.m]
+    scaled_xf = znew[prob.m+1:2*prob.m]
+    xf = scaled_xf / prob.omega
+    v, x = to_original_variables(prob, vs, vf, xs, xf)
+    return (v, x)
+end
+
+
+# function embed_state(prob::FPU, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}) where T<:AbstractFloat
+#     vs, vf, xs, xf = to_slow_fast_variables(prob, u...)
+#     scaled_xf = xf * prob.omega
+#     return vcat(vs, vf, xs, scaled_xf)
+# end
+
+# function align_state(prob::FPU, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}, corrector::Any) where T<:AbstractFloat
+#     znew = corrector(embed_state(prob, u))
+#     vs = znew[1:prob.m]
+#     vf = znew[prob.m+1:2*prob.m]
+#     xs = znew[2*prob.m+1:3*prob.m]
+#     scaled_xf = znew[3*prob.m+1:end]
+#     xf = scaled_xf / prob.omega
+#     v, x = to_original_variables(prob, vs, vf, xs, xf)
+#     return (v, x)
+# end
+
+
+# function embed_state(prob::FPU, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}) where T<:AbstractFloat
+#     construct_z(prob, u...)
+# end
+
+# function align_state(prob::FPU, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}, corrector::Any) where T<:AbstractFloat
+#     znew = corrector(embed_state(prob, u))
+#     recover_v_x(prob, znew, u[2])
+# end
+
 
 function construct_z(prob::FPU, v::AbstractArray{T, 1}, x::AbstractArray{T, 1}) where T<:AbstractFloat
     m = prob.m

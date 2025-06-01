@@ -53,10 +53,10 @@ function get_solvers(config::Dict{String, Any}, prob::SeparableHamiltonianSystem
     solver_kwargs = get_solver_kwargs(config)
     phi_dt = (v0, x0) -> ode_solve(
         (ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), 
-        METHODS[config["method"]], v0, x0, 0., config["dt"], config["nsteps"], false; solver_kwargs...)
+        METHODS[config["method"]], (v0, x0), 0., config["dt"], config["nsteps"], false; solver_kwargs...)
     phi_h = (v0, x0, nsteps) -> ode_solve(
         (ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), 
-        METHODS[config["method"]], v0, x0, 0., nsteps * config["dt"]/config["nsteps"], nsteps, false; solver_kwargs...)
+        METHODS[config["method"]], (v0, x0), 0., nsteps * config["dt"]/config["nsteps"], nsteps, false; solver_kwargs...)
     mean_dt_div_h = Float64(config["nsteps"])
     return phi_dt, phi_h, mean_dt_div_h
 end
@@ -105,18 +105,18 @@ end
 
 function run_sampling(config, transition, prob, v0, x0)
     if config["_name_"] == "hmc-H0" || config["_name_"] == "rhmc-H0" || config["_name_"] == "trajensemble"
-        # init_conditions = sample_initial_conditions(v0, x0, mass(prob); 
-        #     num_samples=config["n_chains"], 
-        #     epsilon=config["epsilon"]
-        # )
+        init_conditions = sample_initial_conditions(v0, x0, mass(prob); 
+            num_samples=config["n_chains"], 
+            epsilon=config["epsilon"]
+        )
         # init_conditions = sample_initial_conditions_3body(v0, x0, mass(prob); 
         #     num_samples=config["n_chains"], 
         #     epsilon=config["epsilon"]
         # )
-        init_conditions = sample_initial_conditions_3body_equilateral(eltype(v0); 
-            num_samples=config["n_chains"], 
-            nu=config["epsilon"]
-        )
+        # init_conditions = sample_initial_conditions_3body_equilateral(eltype(v0); 
+        #     num_samples=config["n_chains"], 
+        #     nu=config["epsilon"]
+        # )
         elapsed_time = @elapsed samples, total_rejections = chain_ensemble(init_conditions, transition; 
             num_transitions=config["n_trans_per_chain"]
         )
@@ -141,6 +141,7 @@ function main()
 
     @info "Instantiating problem ..."
     prob = get_problem(config["problem"])
+    @info "Problem: $(prob)"
 
     @info "Instantiating integrator ..."
     phi_dt, phi_h, mean_dt_div_h = get_solvers(config["integration"], prob)

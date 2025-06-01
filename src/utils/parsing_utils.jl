@@ -24,14 +24,15 @@ function get_problem(config::Dict{String, Any})
         "3body-2d"=>ThreeBody2D,
         "argoncrystal"=>ArgonCrystal,
         "nbody"=>NBody,
-        "nco"=>NonlinearCoupledOscillators)[name](; kwargs...)
+        "nco"=>NonlinearCoupledOscillators,
+        "alphaparticle"=>AlphaParticle)[name](; kwargs...)
 
     return prob
 end
 
 function get_solver_kwargs(config::Dict{String, Any})
     solver_kwargs = Dict{Symbol, Any}()
-    solver_params = ["abstol", "reltol", "maxiters"]
+    solver_params = ["abstol", "reltol", "maxiters", "adaptive"]
 
     for param in solver_params
         if haskey(config, param)

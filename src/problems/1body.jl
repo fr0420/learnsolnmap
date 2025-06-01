@@ -13,14 +13,6 @@ function initial_condition(prob::OneBodyKepler, T::Type)
     return v0, x0
 end
 
-function nondimensionalize(prob::OneBodyKepler, v::AbstractArray{T, 1}, x::AbstractArray{T, 1}) where T<:AbstractFloat
-    return v, x
-end
-
-function dimensionalize(prob::OneBodyKepler, v::AbstractArray{T, 1}, x::AbstractArray{T, 1}) where T<:AbstractFloat
-    return v, x
-end
-
 function compute_ddx!(prob::OneBodyKepler, ddx, dx, x)   
     ddx[:] = - x ./ norm(x)^3
     nothing
@@ -38,6 +30,23 @@ function compute_U(prob::OneBodyKepler, x::AbstractArray{T, 1}) where T<:Abstrac
     return - 1. / norm(x)
 end
 
+function embed_state_interpolative(prob::OneBodyKepler, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}) where T<:AbstractFloat 
+    return vcat(u...)
+end
+
+function align_state_interpolative(prob::OneBodyKepler, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}, corrector::Any) where T<:AbstractFloat
+    z = embed_state_interpolative(prob, u)
+    z_new = corrector(z)
+    return (z_new[1:2], z_new[3:4])
+end
+
+function nondimensionalize(prob::OneBodyKepler, v::AbstractArray{T, 1}, x::AbstractArray{T, 1}) where T<:AbstractFloat
+    return v, x
+end
+
+function dimensionalize(prob::OneBodyKepler, v::AbstractArray{T, 1}, x::AbstractArray{T, 1}) where T<:AbstractFloat
+    return v, x
+end
 
 # function construct_z(v::AbstractArray{T, 1}, x::AbstractArray{T, 1}) where T<:AbstractFloat
 #     H = compute_H(p, q)

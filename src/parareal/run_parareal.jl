@@ -8,8 +8,8 @@ addprocs(40)
 include("../utils/parsing_utils.jl")
 include("../utils/logging_utils.jl")
 include("../utils/saving_utils.jl")
-# include("../utils/python_model.jl")
-include("Parareal.jl")
+@everywhere include("Parareal.jl")
+@everywhere include("../utils/python_model.jl")
 @everywhere include("../utils/ode_solver.jl")
 @everywhere include("../problems/problems.jl")
 
@@ -35,49 +35,73 @@ function parse_commandline()
     return parse_args(s)
 end
 
-@everywhere function ode_solve_wrapper(
-    v0::AbstractArray{T, 1}, 
-    x0::AbstractArray{T, 1};
-    func::Function,
-    method::String, 
-    H::Float64,
-    nsteps::Integer,
-    T2::Type) where T<:AbstractFloat
-
-    if T != T2
-        v0 = convert.(T2, v0)
-        x0 = convert.(T2, x0)
-    end
-    v, x = ode_solve(func, METHODS[method], v0, x0, 0., H, nsteps, false)
-    if T != T2
-        v = convert.(T, v)
-        x = convert.(T, x)
-    end
-    return v, x
-end
-
 function get_solvers(config::Dict{String, Any}, prob::SeparableHamiltonianSystem)
-    fine_solve = (v0, x0) -> ode_solve_wrapper(
-        v0, x0; 
-        func=(ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), 
-        method=config["fine_method"],
-        H=config["Delta_t"],
-        nsteps=config["Nf"], 
-        T2=Float64x4
+    solver_kwargs = get_solver_kwargs(config)
+    fine_solve = u0 -> ode_solve(
+        (ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x),
+        METHODS[config["fine_method"]],
+        u0,
+        0.,
+        config["Delta_t"],
+        config["Nf"], 
+        false,
+        target_type=Float64x4,
+        solver_kwargs...
     )
 
     if ~haskey(config, "nn_ckpt_path")
-        coarse_solve = (v0, x0) -> ode_solve_wrapper(
-            v0, x0; 
-            func=(ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), 
-            method=config["coarse_method"],
-            H=config["Delta_t"],
-            nsteps=config["Nc"], 
-            T2=config["use_float64x4"] ? Float64x4 : Float64
+        coarse_solve = u0 -> ode_solve(
+            (ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x),
+            METHODS[config["coarse_method"]],
+            u0,
+            0.,
+            config["Delta_t"],
+            config["Nc"], 
+            false,
+            target_type=config["use_float64x4"] ? Float64x4 : Float64,
+            solver_kwargs...
         )
     else
-        nn_func = load_nn(config["nn_ckpt_path"])
-        coarse_solve = (v0, x0) -> nn_solve(v0, x0, nn_func)
+        nn_func = load_nn(config["nn_ckpt_path"], config["nn_model_name"])
+        p = Dict()
+        nn_solver = NNForward(nn_func, config["Delta_t"], config["Nc"], p)
+        coarse_solve = u0 -> nn_solver(u0)
+    end
+
+    return fine_solve, coarse_solve
+end
+
+function get_solvers(config::Dict{String, Any}, prob::AutonomousODESystem)
+    solver_kwargs = get_solver_kwargs(config)
+    fine_solve = u0 -> ode_solve(
+        (du, u, p, t) -> compute_du!(prob, du, u), 
+        METHODS[config["fine_method"]],
+        u0,
+        0.,
+        config["Delta_t"],
+        config["Nf"], 
+        false,
+        target_type=Float64x4,
+        solver_kwargs...
+    )
+
+    if ~haskey(config, "nn_ckpt_path")
+        coarse_solve = u0 -> ode_solve(
+            (du, u, p, t) -> compute_du!(prob, du, u), 
+            METHODS[config["coarse_method"]],
+            u0,
+            0.,
+            config["Delta_t"],
+            config["Nc"], 
+            false,
+            target_type=config["use_float64x4"] ? Float64x4 : Float64,
+            solver_kwargs...
+        )
+    else
+        nn_func = load_nn(config["nn_ckpt_path"], config["nn_model_name"])
+        p = Dict("epsilon"=>prob.epsilon)
+        nn_solver = NNForward(nn_func, config["Delta_t"], config["Nc"], p)
+        coarse_solve = u0 -> nn_solver(u0)
     end
 
     return fine_solve, coarse_solve
@@ -99,35 +123,43 @@ function main()
 
     @info "Instantiating problem ..."
     prob = get_problem(config["problem"])
+    @info "Problem: $(prob)"
 
     @info "Instantiating integrators ..."
     fine_solve, coarse_solve = get_solvers(config["integration"], prob)
 
     @info "Generating initial state ..."
-    v0, x0 = initial_condition(prob, config["integration"]["use_float64x4"] ? Float64x4 : Float64)
-    @info "v0: $v0 \nx0: $x0\nH0: $(compute_H(prob, v0, x0))\nK0: $(compute_K(prob, v0))\nU0: $(compute_U(prob, x0))"
+    if prob isa AutonomousODESystem
+        u0 = initial_condition(prob, config["integration"]["use_float64x4"] ? Float64x4 : Float64)
+        @info "u0: $u0"
+    elseif prob isa SeparableHamiltonianSystem
+        v0, x0 = initial_condition(prob, config["integration"]["use_float64x4"] ? Float64x4 : Float64)
+        u0 = (v0, x0)
+        @info "v0: $v0 \nx0: $x0\nH0: $(compute_H(prob, v0, x0))\nK0: $(compute_K(prob, v0))\nU0: $(compute_U(prob, x0))"
+    end
 
     @info "Running parareal!"
     alg_name = config["algorithm"]["_name_"]
     alg_kwargs = to_kwargs(config["algorithm"])
     if alg_name == "plain"
         elapsed_time = @elapsed Parareal.plain(
-            v0, x0, fine_solve, coarse_solve, config["integration"]["N"], config["integration"]["niters"];
+            u0, fine_solve, coarse_solve, config["integration"]["N"], config["integration"]["niters"];
             output_dir=output_dir, alg_kwargs...)
     elseif alg_name == "procrustes"
-        Lambda = (v, x) -> construct_z(prob, v, x)
-        Theta = (v, x, corrector) -> correct_phase(prob, v, x, corrector)
         elapsed_time = @elapsed Parareal.procrustes(
-            v0, x0, fine_solve, coarse_solve, config["integration"]["N"], config["integration"]["niters"],
-            Lambda, Theta; output_dir=output_dir, alg_kwargs...)
+            u0, fine_solve, coarse_solve, config["integration"]["N"], config["integration"]["niters"],
+            u -> embed_state_procrustes(prob, u), 
+            (u, corrector) -> align_state_procrustes(prob, u, corrector); 
+            output_dir=output_dir, alg_kwargs...)
     elseif alg_name == "interpolative"
-        nondim = u -> nondimensionalize(prob, u)
         elapsed_time = @elapsed Parareal.interpolative(
-            v0, x0, fine_solve, coarse_solve, config["integration"]["N"], config["integration"]["niters"], 
-            nondim; output_dir=output_dir, alg_kwargs...)
+            u0, fine_solve, coarse_solve, config["integration"]["N"], config["integration"]["niters"], 
+            u -> embed_state_interpolative(prob, u), 
+            (u, corrector) -> align_state_interpolative(prob, u, corrector); 
+            output_dir=output_dir, alg_kwargs...)
     elseif alg_name == "sequential"
         elapsed_time = @elapsed Parareal.plain(
-            v0, x0, fine_solve, fine_solve, config["integration"]["N"], 0;
+            u0, fine_solve, fine_solve, config["integration"]["N"], 0;
             output_dir=output_dir, alg_kwargs...)
     end
     @info "Done running parareal. Elapsed time = $elapsed_time seconds."

@@ -4,7 +4,7 @@ Generate targets given the file of inputs U0.csv.
 
 
 using Distributed  # for parallel computing
-addprocs(80)
+addprocs(40)
 
 include("../utils/parsing_utils.jl")
 include("../utils/logging_utils.jl")
@@ -39,7 +39,7 @@ end
     T = config["use_float64x4"] ? Float64x4 : Float64
     solver = (v0, x0) -> ode_solve(
         (ddx, dx, x, p, t) -> compute_ddx!(prob, ddx, dx, x), 
-        METHODS[config["method"]], T.(v0), T.(x0), 0., config["Delta_t"], config["nsteps"], false; solver_kwargs...)
+        METHODS[config["method"]], (T.(v0), T.(x0)), 0., config["Delta_t"], config["nsteps"], false; solver_kwargs...)
     return solver
 end
 
@@ -85,12 +85,12 @@ function main()
 
         if first_call
             @info "(Running dry run...)"
-            @time res = @showprogress pmap(phi_Dt, eachslice(V_init[:, 1:40], dims=2), eachslice(X_init[:, 1:40], dims=2))
+            @time res = @showprogress pmap(phi_Dt, V_init[1:40], X_init[1:40])
             first_call = false
         end
         
         # compute outputs and save in U_{n}.csv 
-        elapsed_time = @elapsed res = @showprogress pmap(phi_Dt, eachslice(V_init, dims=2), eachslice(X_init, dims=2))
+        elapsed_time = @elapsed res = @showprogress pmap(phi_Dt, V_init, X_init)
 
         @everywhere GC.gc()  # <-- important! 
         V_final = hcat([v for (v, x) in res]...)

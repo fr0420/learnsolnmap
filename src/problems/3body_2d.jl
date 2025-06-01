@@ -17,13 +17,13 @@ function initial_condition(prob::ThreeBody2D, T::Type)
     x0 = zeros(T, 6)
     v0 = zeros(T, 6)
 
-    # x0[1:2] =   [-1.00102,      0.,     ]
-    # x0[3:4] =   [100.,    0.,     ]
-    # x0[5:6] =   [102.,    0.,     ]
+    x0[1:2] =   [-1.00102,      0.,     ]
+    x0[3:4] =   [100.,    0.,     ]
+    x0[5:6] =   [102.,    0.,     ]
 
-    # v0[1:2] =   [0.,     -0.010001,]
-    # v0[3:4] =   [0.,     1., ]
-    # v0[5:6] =   [0.,     0.1,  ]
+    v0[1:2] =   [0.,     -0.010001,]
+    v0[3:4] =   [0.,     1., ]
+    v0[5:6] =   [0.,     0.1,  ]
 
     # x0[1:2] =   [-1.00102,      0.,     ]
     # x0[3:4] =   [100.,    0.,     ]
@@ -33,7 +33,7 @@ function initial_condition(prob::ThreeBody2D, T::Type)
     # v0[3:4] =   [0.,     1., ]
     # v0[5:6] =   [0.,     1.5,  ]
     
-    # # equal mass system 
+    # equal mass system 
     # x0[1:2] =   [1.,      0.,     ]
     # x0[3:4] =   [-0.5,    sqrt(3)/2,     ]
     # x0[5:6] =   [-0.5,    -sqrt(3)/2,     ]
@@ -48,9 +48,18 @@ function initial_condition(prob::ThreeBody2D, T::Type)
     # v0[5:6] *= 1.15
 
     # equal mass, non-equilateral configuration
-    v0[1:6] = [0.07549985 -0.81340487  0.1986117   0.27531269 -0.15989042  0.35567132]  
-    x0[1:6] = [-1.38436497 -0.62820671  0.4143637  -0.82314002  1.57423108  0.48634039]
+    # v0[1:6] = [0.07549985 -0.81340487  0.1986117   0.27531269 -0.15989042  0.35567132]  
+    # x0[1:6] = [-1.38436497 -0.62820671  0.4143637  -0.82314002  1.57423108  0.48634039]
 
+    # equal mass, non-equilateral configuration
+    # v0[1:6] = [1.73632667 -1.16045732  0.13135233  0.92899063 -1.86172841  0.24484457]
+    # x0[1:6] = [-0.66720717  0.57787558  0.90367762  0.70218572  0.73151259  0.89611817]
+
+    # v0[1:6] = [ 0.66357362 -0.9793537   0.31342274  0.3489464  -0.988621    0.62217095]
+    # x0[1:6] = [-1.22568539  0.58590771  0.94712819 -2.84470862 -1.37853452  1.08470941]
+
+    # v0 .+= 1e-10 * randn(T, 6)
+    # x0 .+= 1e-10 * randn(T, 6)
     return v0, x0
 end 
 
@@ -111,4 +120,14 @@ function compute_U(prob::ThreeBody2D, x::AbstractArray{T, 1}) where T<:AbstractF
     x2 = @view x[3:4]
     x3 = @view x[5:6]
     return - (prob.m1 * prob.m2 / norm(x1-x2) + prob.m1 * prob.m3 / norm(x1-x3) + prob.m2 * prob.m3 / norm(x2-x3)) * prob.G
+end
+
+function embed_state_interpolative(prob::ThreeBody2D, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}) where T<:AbstractFloat 
+    return vcat(u...)
+end
+
+function align_state_interpolative(prob::ThreeBody2D, u::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}, corrector::Any) where T<:AbstractFloat
+    z = embed_state_interpolative(prob, u)
+    z_new = corrector(z)
+    return (z_new[1:6], z_new[7:12])
 end

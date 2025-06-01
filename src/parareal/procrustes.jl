@@ -1,29 +1,116 @@
 using GenericLinearAlgebra, Statistics
 
-"""Procrustes analysis"""
+"""
+    ProcrustesAlignment{T}(transform, scale, special)
 
-struct PA{T<:AbstractFloat}
-    Omega::AbstractArray{T, 2}  # orthogonal matrix for rotation
-    scale::T  # scaling factor 
+Holds the result of a Procrustes alignment.
+
+Fields:
+- `transform::AbstractArray{T, 2}`: The computed orthogonal transformation matrix. When `special` is `true`, this
+  matrix is a proper rotation (i.e. belongs to SO(d)); otherwise, it is any orthogonal matrix.
+- `scale::T`: The scaling factor.
+- `special::Bool`: A Boolean flag indicating whether the transformation was forced to be in SO(d).
+"""
+struct ProcrustesAlignment{T<:AbstractFloat}
+    transform::AbstractArray{T, 2}  
+    scale::T
+    special::Bool
 end
 
-function PA(A::AbstractArray{T, 2}, B::AbstractArray{T, 2}, use_scaling::Bool) where T<:AbstractFloat
+"""
+    procrustes_alignment(A, B, use_scaling; special=true)
 
-    # estimate rotation 
-    M = A * B'
-    sol = GenericLinearAlgebra.svd(M)
-    Omega = sol.U * sol.Vt
+Perform Procrustes analysis to determine the optimal transformation (and optional scaling)
+that best aligns matrix `B` to matrix `A`.
 
-    # estimate scaling 
-    scale = use_scaling ? sum(A .* (Omega * B)) / sum(B .* B) : T(1.0)
+Arguments:
+- `A::AbstractArray{T, 2}`: The target d x n matrix.
+- `B::AbstractArray{T, 2}`: The matrix to be transformed (must have the same dimensions as `A`).
+- `use_scaling::Bool`: If `true`, computes a scaling factor; otherwise, scaling is set to 1.
+- `special::Bool` (keyword, default `true`): If `true`, forces the computed transformation to be in SO(d)
+  (i.e. a rotation matrix). If `false`, the transformation is any orthogonal matrix.
 
-    @show Omega
-    @show scale
+Returns:
+A `ProcrustesAlignment` instance containing:
+- `transform`: The computed orthogonal transformation. It is a proper rotation when `special` is `true`.
+- `scale`: The scaling factor.
+- `special`: The flag indicating whether the special (rotation) constraint was enforced.
+"""
+function procrustes_alignment(A::AbstractArray{T, 2}, B::AbstractArray{T, 2}, use_scaling::Bool; special::Bool=true) where T<:AbstractFloat
+    # Check that A and B have the same dimensions
+    @assert size(A) == size(B) "Matrices A and B must have the same dimensions"
+    
+    # Compute the d x d cross-covariance matrix
+    M = A * transpose(B)
+    
+    # Perform the singular value decomposition
+    svd_result = GenericLinearAlgebra.svd(M)
+    U = svd_result.U
+    Vt = svd_result.Vt
+    
+    # Compute the initial orthogonal transformation
+    transform = U * Vt
+    
+    # If special is requested, ensure det(transform)=+1
+    if special && det(transform) < 0
+        U[:, end] .= -U[:, end]
+        transform = U * Vt
+    end
+    
+    # Compute the scaling factor if requested
+    scale = one(T)
+    if use_scaling
+        denominator = sum(B .* B)
+        @assert denominator != 0 "Denominator in scaling computation is zero (B cannot be a zero matrix)"
+        scale = sum(A .* (transform * B)) / denominator
+    end
 
-    return PA(Omega, scale)
+    return ProcrustesAlignment{T}(transform, scale, special)
 end
 
-(pa::PA)(z) = pa.Omega * z * pa.scale
+# Define the callable behavior for the ProcrustesAlignment instance
+function (pa::ProcrustesAlignment)(z::AbstractArray{T, 2}) where T<:AbstractFloat
+    return pa.scale * pa.transform * z
+end
+
+function (pa::ProcrustesAlignment)(z::AbstractArray{T, 1}) where T<:AbstractFloat
+    return pa.scale * (pa.transform * z)
+end
+
+"""
+    procrustes_alignment(A, B use_scaling; special=true)
+
+Perform Procrustes analysis on two pairs of matrices.
+
+Arguments:
+- `A::Tuple{AbstractArray{T, 2}, AbstractArray{T, 2}}`: The target matrices.
+- `B::Tuple{AbstractArray{T, 2}, AbstractArray{T, 2}}`: The matrices to be transformed.
+- `use_scaling::Bool`: If `true`, computes a scaling factor; otherwise, scaling is set to 1.
+- `special::Bool` (keyword, default `true`): If `true`, forces the computed transformation to be in SO(d)
+  (i.e. a rotation matrix). If `false`, the transformation is any orthogonal matrix.
+
+Returns:
+A tuple of `ProcrustesAlignment` instances, one for each pair of matrices.
+"""
+function procrustes_alignment(
+    A::Tuple{AbstractArray{T, 2}, AbstractArray{T, 2}},
+    B::Tuple{AbstractArray{T, 2}, AbstractArray{T, 2}},
+    use_scaling::Bool;
+    special::Bool=true
+) where T<:AbstractFloat
+    pa1 = procrustes_alignment(A[1], B[1], use_scaling; special=special)
+    pa2 = procrustes_alignment(A[2], B[2], use_scaling; special=special)
+    return (pa1, pa2)
+end
+
+# Define the callable behavior for the tuple of ProcrustesAlignment instances
+function (pa::Tuple{ProcrustesAlignment{T}, ProcrustesAlignment{T}})(z::Tuple{AbstractArray{T, 2}, AbstractArray{T, 2}}) where T<:AbstractFloat
+    return (pa[1](z[1]), pa[2](z[2]))
+end
+
+function (pa::Tuple{ProcrustesAlignment{T}, ProcrustesAlignment{T}})(z::Tuple{AbstractArray{T, 1}, AbstractArray{T, 1}}) where T<:AbstractFloat
+    return (pa[1](z[1]), pa[2](z[2]))
+end
 
 
 """Procrustes analysis in hyperbolic space (Tabaghi and Dokmanic, 2021)"""
