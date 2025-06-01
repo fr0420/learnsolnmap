@@ -1,17 +1,20 @@
 [problem]                           # ode problem
-_name_ = "fpu"
-omega = 300.0
+_name_ = "nco"
+epsilon = 0.01
 
 [algorithm]                         # parareal algorithm
-_name_ = "plain"
+_name_ = "procrustes"
+with_additive = true
+use_scaling = false
+window_size = -1 
+k_most_recent = 1
 
 [integration]
-Delta_t = 1.0                       # time interval 
-N = 500                              # number of intervals
-Nf = 262144                         # number of fine steps per interval
-Nc = 32768                            # number of coarse steps per interval
+Delta_t = 40.0                       # time interval 
+N = 1000                              # number of intervals
+Nf = 4000                         # number of fine steps per interval
+Nc = 2000                            # number of coarse steps per interval
 niters = 10                         # number of parareal iterations
 fine_method = "KahanLi8"            # fine solver method
 coarse_method = "VelocityVerlet"        # coarse solver method
-# nn_ckpt_path =                    # nn checkpoint path
 use_float64x4 = false               # use Float64x4 for coarse solver (fine solver always uses Float64x4)

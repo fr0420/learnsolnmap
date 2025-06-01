@@ -1,19 +1,26 @@
 [problem]                           # ode problem
 _name_ = "fpu"
-omega = 300.0
+omega = 100.0
 
 [algorithm]                         # data generation algorithm
 # _name_ = "trajensemble"
-# sigma = 1e-1
-# n_chains = 5
-# n_steps_per_chain = 10
+# epsilon = 1e-1
+# n_chains = 4000
+# n_trans_per_chain = 50
 
-_name_ = "hmc-H0"  
-sigma = 1e-1
-n_chains = 5
-n_trans_per_chain = 10
+# _name_ = "hmc-H0"  
+# epsilon = 0.2
+# n_chains = 400
+# n_trans_per_chain = 500
+# n_steps_per_trans = 1
+# with_rejection = false
+
+_name_ = "rhmc-H0"  
+epsilon = 0.2
+n_chains = 400
+n_trans_per_chain = 500
 n_steps_per_trans = 1
-with_rejection = true
+with_rejection = false
 
 # _name_ = "hmc"
 # beta = 1.0
@@ -23,7 +30,8 @@ with_rejection = true
 # with_rejection = true
 
 [integration]
-dt = 4e-1                           # time interval 
-nsteps = 65536                      # number of steps per interval
-method = "CalvoSanz4"               # solver method
+dt = 0.5                           # time interval 
+nsteps = 4096                      # number of steps per interval
+method = "KahanLi8"               # solver method
+adaptive = false                   # adaptive time stepping
 use_float64x4 = true               # use Float64x4 

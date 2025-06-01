@@ -9,12 +9,12 @@ m3 = 1.0
 _name_ = "sequential"
 
 [integration]
-Delta_t = 2e-3                       # time interval 
-N = 50000                              # number of intervals
+Delta_t = 1e-2                       # time interval 
+N = 10000                              # number of intervals
 Nf = 1                        # number of fine steps per interval
 Nc = 1                            # number of coarse steps per interval
 niters = 40                         # number of parareal iterations
-fine_method = "ImplicitMidpoint"            # fine solver method
+fine_method = "DPRKN5"            # fine solver method
 coarse_method = "VelocityVerlet"        # coarse solver method
 # nn_ckpt_path =                    # nn checkpoint path
 use_float64x4 = false               # use Float64x4 for coarse solver (fine solver always uses Float64x4)

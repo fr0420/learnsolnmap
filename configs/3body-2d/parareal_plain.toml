@@ -1,0 +1,20 @@
+[problem]                           # ode problem
+_name_ = "3body-2d"
+G = 1.0
+m1 = 100.0
+m2 = 1.0
+m3 = 0.001
+
+[algorithm]                         # parareal algorithm
+_name_ = "plain"
+
+[integration]
+Delta_t = 1.0                       # time interval 
+N = 10000                              # number of intervals
+Nf = 100                        # number of fine steps per interval
+Nc = 10                            # number of coarse steps per interval
+niters = 20                         # number of parareal iterations
+fine_method = "KahanLi8"            # fine solver method
+coarse_method = "VelocityVerlet"        # coarse solver method
+# nn_ckpt_path =                    # nn checkpoint path
+use_float64x4 = true               # use Float64x4 for coarse solver (fine solver always uses Float64x4)

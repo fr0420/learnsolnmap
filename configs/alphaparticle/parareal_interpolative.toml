@@ -1,0 +1,22 @@
+[problem]                           # ode problem
+_name_ = "alphaparticle"
+epsilon = 0.27
+
+[algorithm]                         # parareal algorithm
+_name_ = "interpolative"
+tol = 1e-14
+use_bias = true
+centering = true
+k_most_recent = -1
+window_size = 1
+k_nearest = -1
+
+[integration]
+Delta_t = 10.0                       # time interval 
+N = 1000                              # number of intervals
+Nf = 1000                         # number of fine steps per interval
+Nc = 64                            # number of coarse steps per interval
+niters = 20                         # number of parareal iterations
+fine_method = "Vern9"            # fine solver method
+coarse_method = "Midpoint"        # coarse solver method
+use_float64x4 = false               # use Float64x4 for coarse solver (fine solver always uses Float64x4)

@@ -1,17 +1,16 @@
 [problem]                           # ode problem
-_name_ = "nco"
-epsilon = 0.01
+_name_ = "1body"
+ecc = 0.5                           # eccentricity
 
 [algorithm]                         # parareal algorithm
-_name_ = "sequential"
+_name_ = "plain"
 
 [integration]
-Delta_t = 0.01                       # time interval 
-N = 500000                              # number of intervals
+Delta_t = 0.02                       # time interval 
+N = 50000                              # number of intervals
 Nf = 1                         # number of fine steps per interval
 Nc = 1                            # number of coarse steps per interval
-niters = 1                         # number of parareal iterations
+niters = 20                         # number of parareal iterations
 fine_method = "KahanLi8"            # fine solver method
-coarse_method = "CalvoSanz4"        # coarse solver method
-# nn_ckpt_path =                    # nn checkpoint path
+coarse_method = "VelocityVerlet"        # coarse solver method
 use_float64x4 = false               # use Float64x4 for coarse solver (fine solver always uses Float64x4)

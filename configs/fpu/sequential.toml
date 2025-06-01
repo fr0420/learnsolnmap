@@ -1,0 +1,15 @@
+[problem]                           # ode problem
+_name_ = "fpu"
+omega = 50.0
+
+[integration]
+# dt = 0.00390625                       # time interval 
+# nsteps = 4                        # number of steps per interval
+# N = 128000                              # number of intervals
+dt = 0.0009765625                       # time interval 
+nsteps = 32                        # number of steps per interval
+N = 1024000                              # number of intervals
+method = "KahanLi8"            # solver method
+adaptive = false                # adaptive time stepping
+use_float64x4 = true               # use Float64x4
+retfull = false             # return full history

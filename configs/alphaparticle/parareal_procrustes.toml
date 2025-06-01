@@ -1,0 +1,20 @@
+[problem]                           # ode problem
+_name_ = "alphaparticle"
+epsilon = 0.27
+
+[algorithm]                         # parareal algorithm
+_name_ = "procrustes"
+with_additive = true
+use_scaling = false
+window_size = 1 
+k_most_recent = 1
+
+[integration]
+Delta_t = 10.0                       # time interval 
+N = 1000                              # number of intervals
+Nf = 1000                         # number of fine steps per interval
+Nc = 512                            # number of coarse steps per interval
+niters = 10                         # number of parareal iterations
+fine_method = "Vern9"            # fine solver method
+coarse_method = "Midpoint"        # coarse solver method
+use_float64x4 = false               # use Float64x4 for coarse solver (fine solver always uses Float64x4)

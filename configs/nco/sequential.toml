@@ -1,0 +1,12 @@
+[problem]                           # ode problem
+_name_ = "nco"
+epsilon = 0.01
+
+[integration]
+dt = 1e-2                       # time interval 
+nsteps = 1                        # number of steps per interval
+N = 2000000                              # number of intervals
+method = "KahanLi8"            # solver method
+adaptive = false                # adaptive time stepping
+use_float64x4 = true               # use Float64x4
+retfull = false             # return full history

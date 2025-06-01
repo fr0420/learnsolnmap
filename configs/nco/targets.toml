@@ -3,8 +3,8 @@ _name_ = "nco"
 epsilon = 0.01
 
 [integration]
-Delta_t = 5.0                       # time interval 
+Delta_t = 10.0                       # time interval 
 N = 5                              # number of intervals
-nsteps = 256                         # number of steps per interval
+nsteps = 512                         # number of steps per interval
 method = "KahanLi8"               # solver method
 use_float64x4 = true                # use Float64x4 

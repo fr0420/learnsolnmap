@@ -6,14 +6,16 @@ omega = 300.0
 _name_ = "procrustes"
 with_additive = true
 use_scaling = false
+window_size = -1
+k_most_recent = 1
 
 [integration]
 Delta_t = 1.0                       # time interval 
-N = 10                              # number of intervals
+N = 500                              # number of intervals
 Nf = 262144                         # number of fine steps per interval
-Nc = 512                            # number of coarse steps per interval
-niters = 5                         # number of parareal iterations
+Nc = 32768                            # number of coarse steps per interval
+niters = 1                         # number of parareal iterations
 fine_method = "KahanLi8"            # fine solver method
-coarse_method = "CalvoSanz4"        # coarse solver method
+coarse_method = "VelocityVerlet"        # coarse solver method
 # nn_ckpt_path =                    # nn checkpoint path
 use_float64x4 = false               # use Float64x4 for coarse solver (fine solver always uses Float64x4)
