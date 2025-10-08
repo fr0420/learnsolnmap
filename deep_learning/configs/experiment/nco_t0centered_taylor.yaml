@@ -27,29 +27,31 @@ defaults:
 
 datamodule:
   train:
-    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0/train
+    data_dir: /Users/rfang/Documents/projects/learnsolnmap/data/nco/epsilon=1e-2/202510071037_rhmc-H0/Dt=5e0/train
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0/train
     # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e1_min_Dt=-1e1/train
     # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e2_min_Dt=-1e2/train
     sequence_len: 2
-    downsample_factor: 1.0
+    downsample_factor: 0.02
     Dt: 5.0
     # Dt_range: [19.0, 21.0]
     # exclude: false
   test:
-    data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0/test
+    data_dir: /Users/rfang/Documents/projects/learnsolnmap/data/nco/epsilon=1e-2/202510071037_rhmc-H0/Dt=5e0/test
+    # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/Dt=5e0/test
     # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e1_min_Dt=-1e1/test
     # data_dir: /workspace/projects_rui/learnsolnmap/data1/nco/epsilon=1e-2/version22/max_Dt=1e2_min_Dt=-1e2/test
     sequence_len: 2
-    downsample_factor: 1.0
+    downsample_factor: 0.02
     Dt: 5.0
     # Dt_range: [19.0, 21.0]
     # exclude: false
-  batch_size: 400
+  batch_size: 100
 
 trainer:
   max_epochs: -1
-  max_steps: 1000000
-  min_steps: 500000
+  max_steps: 500000
+  min_steps: 250000
   # gradient_clip_val: 2.0
   gradient_clip_algorithm: value
   log_every_n_steps: 4
@@ -60,9 +62,10 @@ module:
   problem:
     epsilon: 1e-2
 
-  order: 2
+  order: 0
 
   use_dimensionless: true
+  use_dudt: false 
 
   problem_param_keys: []
 
@@ -112,7 +115,7 @@ module:
   scheduler:
     scheduler:
       total_steps: 1000000
-      pct_start: 0.0
+      pct_start: 0.1
       # factor: 0.9
       # patience: 8
       # patience: 5000
@@ -131,7 +134,7 @@ module:
   #   max_period: 1000.0
 
   net_T0:
-    input_dim: 8
+    input_dim: 4
     output_dim: 4
     hidden_dim: 1000
     # n_hidden_layers: 6

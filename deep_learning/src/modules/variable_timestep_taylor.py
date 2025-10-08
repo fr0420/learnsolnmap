@@ -237,6 +237,7 @@ class TaylorBasedT0CenteredSolutionMap(SolutionMapWithFp):
         temporal_encoding: Optional[DictConfig] = None,
         feature_normalization: Optional[DictConfig] = None,
         preserve_velocity_norm: bool = False,
+        use_dudt: bool = True,
         order: int = 1,
         **kwargs
     ) -> None:
@@ -259,6 +260,7 @@ class TaylorBasedT0CenteredSolutionMap(SolutionMapWithFp):
         else:
             self.net_T0 = hydra.utils.instantiate(net_T0)
         self.preserve_velocity_norm = PreserveVelocityNorm() if preserve_velocity_norm else None
+        self.use_dudt = use_dudt
 
         if self.weight_init is not None:
             self._init_weights()
@@ -291,10 +293,13 @@ class TaylorBasedT0CenteredSolutionMap(SolutionMapWithFp):
             return self._apply_nondim(out, p)  # switch back to nondimensional space
         else:
             # a standard neural network expects nondimensional inputs
-            # switch to dimensional space to compute f(u, p) then switch back to nondimensional space
-            du0 = self.problem.compute_du(self._apply_dim(u0, p), None, p)
-            du0 = self._apply_nondim(du0, p, deriv_mode=True)
-            out = self.net_T0(torch.cat([du0, u0] + self.prepare_params_input(p), dim=-1))
+            if self.use_dudt:
+                # switch to dimensional space to compute f(u, p) then switch back to nondimensional space
+                du0 = self.problem.compute_du(self._apply_dim(u0, p), None, p)
+                du0 = self._apply_nondim(du0, p, deriv_mode=True)
+                out = self.net_T0(torch.cat([du0, u0] + self.prepare_params_input(p), dim=-1))
+            else:
+                out = self.net_T0(torch.cat([u0] + self.prepare_params_input(p), dim=-1))
             if self.preserve_velocity_norm is not None:
                 out = self.preserve_velocity_norm(u0, out)
             return out

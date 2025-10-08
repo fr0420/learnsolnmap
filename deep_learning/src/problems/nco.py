@@ -209,26 +209,26 @@ class NonlinearCoupledOscillators(SeparableHamiltonianSystem):
     def nondim_u(self, u: torch.Tensor, p: Optional[Dict[str, torch.Tensor]]) -> torch.Tensor:
         """Nondimensionalize u = (v1, v2, x1, x2)."""
         u_nd = self.vx_to_pq(u, p)
-        # u_nd = self.to_slow_fast_variables(u_nd)
+        u_nd = self.to_slow_fast_variables(u_nd)
         return u_nd
     
     def dim_u(self, u_nd: torch.Tensor, p: Optional[Dict[str, torch.Tensor]]) -> torch.Tensor:
         """Dimensionalize u_nd = (p1_nd, p2_nd, q1_nd, q2_nd)."""
         u = u_nd.clone()
-        # u = self.to_original_variables(u)
+        u = self.to_original_variables(u)
         u = self.pq_to_vx(u, p)
         return u
 
     def nondim_du(self, du: torch.Tensor, p: Optional[Dict[str, torch.Tensor]]) -> torch.Tensor:
         """Nondimensionalize du = (dv1, dv2, dx1, dx2)."""
         du_nd = self.vx_to_pq(du, p)
-        # du_nd = self.to_slow_fast_variables(du_nd)
+        du_nd = self.to_slow_fast_variables(du_nd)
         return du_nd
 
     def dim_du(self, du_nd: torch.Tensor, p: Optional[Dict[str, torch.Tensor]]) -> torch.Tensor:
         """Dimensionalize du_nd = (dp1_nd, dp2_nd, dq1_nd, dq2_nd)."""
         du = du_nd.clone()
-        # du = self.to_original_variables(du)
+        du = self.to_original_variables(du)
         du = self.pq_to_vx(du, p)
         return du
     

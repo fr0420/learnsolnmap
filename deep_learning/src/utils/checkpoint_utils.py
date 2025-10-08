@@ -17,7 +17,7 @@ def load_model_from_ckpt(ckpt_path, model_name="T0CenteredSolutionMap", strict=T
     """
     try:
         # Load checkpoint from the given path
-        checkpoint = torch.load(ckpt_path, map_location="cpu")
+        checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     except FileNotFoundError:
         print(f"Error: No checkpoint found at {ckpt_path}")
         return None
