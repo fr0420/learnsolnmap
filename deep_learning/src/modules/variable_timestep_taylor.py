@@ -33,6 +33,7 @@ class SolutionMapWithFp(BaseSolutionMap):
         multiplier_activation: Optional[DictConfig] = None,
         temporal_encoding: Optional[DictConfig] = None,
         feature_normalization: Optional[DictConfig] = None,
+        use_dudt: bool = True,
         **kwargs
     ) -> None:
         super(SolutionMapWithFp, self).__init__(**kwargs)
@@ -53,7 +54,8 @@ class SolutionMapWithFp(BaseSolutionMap):
             self.w3 = nn.Parameter(torch.tensor(1.), requires_grad=True)
         self.temp_enc = hydra.utils.instantiate(temporal_encoding) if temporal_encoding else None
         self.feat_norm = hydra.utils.instantiate(feature_normalization) if feature_normalization else None
-    
+        self.use_dudt = use_dudt
+
         if self.weight_init is not None:
             self._init_weights()
 
@@ -74,7 +76,10 @@ class SolutionMapWithFp(BaseSolutionMap):
         # pass through the network
         u_in = self.feat_norm(u) if self.feat_norm is not None else u
         t_in = self.temp_enc(t) if self.temp_enc is not None else t
-        out = self.net(torch.cat([du, u_in, t_in] + self.prepare_params_input(p), dim=-1))
+        if self.use_dudt:
+            out = self.net(torch.cat([du, u_in, t_in] + self.prepare_params_input(p), dim=-1))
+        else:
+            out = self.net(torch.cat([u_in, t_in] + self.prepare_params_input(p), dim=-1))
         if self.feat_norm is not None:
             out = self.feat_norm.inverse(out)
 
@@ -145,7 +150,10 @@ class SolutionMapWithFp(BaseSolutionMap):
         # pass through the network
         u_in = self.feat_norm(u) if self.feat_norm is not None else u
         t_in = self.temp_enc(t) if self.temp_enc is not None else t
-        out = self.net(torch.cat([du, u_in, t_in] + self.prepare_params_input(p), dim=-1))
+        if self.use_dudt:
+            out = self.net(torch.cat([du, u_in, t_in] + self.prepare_params_input(p), dim=-1))
+        else:
+            out = self.net(torch.cat([u_in, t_in] + self.prepare_params_input(p), dim=-1))
         if self.feat_norm is not None:
             out = self.feat_norm.inverse(out)
 
@@ -174,6 +182,7 @@ class TaylorBasedIdentityEnforcedSolutionMap(SolutionMapWithFp):
         feature_normalization: Optional[DictConfig] = None,
         preserve_velocity_norm: bool = False,
         order: int = 1,
+        use_dudt: bool = True,
         **kwargs
     ) -> None:
         super(TaylorBasedIdentityEnforcedSolutionMap, self).__init__(
@@ -182,6 +191,7 @@ class TaylorBasedIdentityEnforcedSolutionMap(SolutionMapWithFp):
             multiplier_activation=multiplier_activation,
             temporal_encoding=temporal_encoding,
             feature_normalization=feature_normalization,
+            use_dudt=use_dudt,
             **kwargs
         )
         self.save_hyperparameters(logger=False)
@@ -247,6 +257,7 @@ class TaylorBasedT0CenteredSolutionMap(SolutionMapWithFp):
             multiplier_activation=multiplier_activation,
             temporal_encoding=temporal_encoding,
             feature_normalization=feature_normalization,
+            use_dudt=use_dudt,
             **kwargs,
         )
         self.save_hyperparameters(logger=False)
@@ -260,7 +271,6 @@ class TaylorBasedT0CenteredSolutionMap(SolutionMapWithFp):
         else:
             self.net_T0 = hydra.utils.instantiate(net_T0)
         self.preserve_velocity_norm = PreserveVelocityNorm() if preserve_velocity_norm else None
-        self.use_dudt = use_dudt
 
         if self.weight_init is not None:
             self._init_weights()
