@@ -2,6 +2,7 @@ import hydra
 import pytorch_lightning as pl
 import torch
 from torch import nn
+from lightning.pytorch.utilities import grad_norm
 
 from omegaconf import DictConfig
 
@@ -74,3 +75,9 @@ class BaseLitModel(pl.LightningModule):
 
     def on_test_epoch_end(self):
         self.test_step_outputs.clear()
+
+    def on_before_optimizer_step(self, optimizer):
+        # Compute the 2-norm for each layer
+        # If using mixed precision, the gradients are already unscaled here
+        norms = grad_norm(self, norm_type=2)
+        self.log_dict(norms)
