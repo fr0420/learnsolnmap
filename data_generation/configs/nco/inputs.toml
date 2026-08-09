@@ -16,7 +16,7 @@ epsilon = 0.01
 # with_rejection = false
 
 _name_ = "rhmc-H0"  
-epsilon = 1.0
+epsilon = 0.1
 n_chains = 1000
 n_trans_per_chain = 600
 n_steps_per_trans = 1
