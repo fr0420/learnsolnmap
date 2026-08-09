@@ -3,8 +3,6 @@ Fermi-Pasta-Ulam Problem
 """
 
 using StaticArrays
-using NL2sol
-# #using NonlinearSolve
 
 Base.@kwdef struct FPU <: SeparableHamiltonianSystem
     omega::Float64      # frequency of stiff springs  
@@ -211,97 +209,3 @@ end
 #     znew = corrector(embed_state(prob, u))
 #     recover_v_x(prob, znew, u[2])
 # end
-
-
-function construct_z(prob::FPU, v::AbstractArray{T, 1}, x::AbstractArray{T, 1}) where T<:AbstractFloat
-    m = prob.m
-
-    z = zeros(T, 4*m+1)
-    z[1:2*m] = v
-    z[2*m+1:end] = compute_diffx(prob, x)    
-    
-    return z        
-end
-
-function recover_v_x(prob::FPU, z::AbstractArray{T, 1}, x_guess::AbstractArray{T, 1}) where T<:AbstractFloat
-    m = prob.m
-
-    v = z[1:2*m]
-    diffx = z[2*m+1:end]
-    
-    if T != Float64
-        diffx = convert.(Float64, diffx)
-        x_guess = convert.(Float64, x_guess)
-    end 
-    
-    function residual(x, r)
-        r[:] = compute_diffx(prob, x) .- diffx
-        return r
-    end
-
-    function jacobian(x, jac)
-        jac[:, :] = Jac_diffx(prob, x)
-        return jac
-    end
-
-    res = nl2sol(residual, jacobian, x_guess, 2*m+1; quiet=true)
-    x = res.minimum
-
-    #f(u, p) = compute_dq(u) - dq
-    #jac(u, p) = Jac_dq(u)
-    #prob = NonlinearProblem(NonlinearFunction(f; jac=jac), q_guess, nothing)
-    #sol = solve(prob, NewtonRaphson())
-    #q = sol.u
-    # println("residual:", sol.resid)
-
-    if T != Float64
-        x = convert.(T, x)
-    end
-
-    return v, x
-end
-
-correct_phase(prob::FPU, v, x, corrector) = recover_v_x(prob, corrector(construct_z(prob, v, x)), x)
-
-function compute_diffx(prob::FPU, x::AbstractArray{T, 1}) where T<:AbstractFloat
-    m = prob.m
-    omega = convert(T, prob. omega)
-    sqrt2 = sqrt(convert(T, 2.0))
-
-    diffx = zeros(T, 2*m+1)
-
-    dx_stiff = x[2:2:end] - x[1:2:end]
-    x_pad = vcat([0], x, [0])
-    dx_soft = x_pad[2:2:end] - x_pad[1:2:end]
-    
-    diffx[1:m] = omega / sqrt2 * dx_stiff
-    diffx[m+1:end] = sqrt2 * dx_soft.^2
-    
-    return diffx
-end 
-
-function Jac_diffx(prob::FPU, x::AbstractArray{T, 1}) where T<:AbstractFloat
-    m = prob.m
-    omega = convert(T, prob.omega)
-    sqrt2 = sqrt(convert(T, 2.0))
-
-    J = zeros(T, (2*m+1, 2*m))
-    
-    x_pad = vcat([0], x, [0]) 
-    dx_soft = x_pad[2:2:end] - x_pad[1:2:end]
-    
-    for i in 1:m
-        J[i, 2*i-1] = - omega / sqrt2
-        J[i, 2*i] = omega / sqrt2
-    end 
-    
-    for i in 2:m
-        J[m+i, 2*i-2] = - 2 * sqrt2 * dx_soft[i]
-        J[m+i, 2*i-1] = 2 * sqrt2 * dx_soft[i]
-    end
-    
-    J[m+1, 1] = 2 * sqrt2 * dx_soft[1]
-    J[end, end] = - 2 * sqrt2 * dx_soft[end]
-    
-    return J
-end
