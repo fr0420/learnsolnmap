@@ -3,38 +3,17 @@ _name_ = "nco"
 epsilon = 0.01
 
 [algorithm]                         # data generation algorithm
-# _name_ = "trajensemble"
-# epsilon = 1e-1
-# n_chains = 100
-# n_trans_per_chain = 60
-
-# _name_ = "hmc-H0"  
-# epsilon = 0.1
-# n_chains = 1000
-# n_trans_per_chain = 600
-# n_steps_per_trans = 1
-# with_rejection = false
-
+# Available _name_ options and required keys:
+#   "rhmc-H0"     : epsilon, n_chains, n_trans_per_chain, n_steps_per_trans, with_rejection
+#   "hmc-H0"      : epsilon, n_chains, n_trans_per_chain, n_steps_per_trans, with_rejection
+#   "trajensemble": epsilon, n_chains, n_trans_per_chain
+#   "rhmc" / "hmc": beta, n_chains, n_trans_per_chain, n_steps_per_trans, with_rejection, [epsilon]
 _name_ = "rhmc-H0"  
 epsilon = 0.1
 n_chains = 1000
 n_trans_per_chain = 600
 n_steps_per_trans = 1
 with_rejection = false
-
-# _name_ = "hmc"
-# beta = 1.0
-# n_chains = 100
-# n_trans_per_chain = 60
-# n_steps_per_trans = 1
-# with_rejection = true
-
-# _name_ = "rhmc"
-# beta = 1.0
-# n_chains = 100
-# n_trans_per_chain = 60
-# n_steps_per_trans = 1
-# with_rejection = true
 
 [integration]
 dt = 64.0                          # time interval 
