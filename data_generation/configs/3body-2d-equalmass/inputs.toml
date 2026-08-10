@@ -1,6 +1,9 @@
 [problem]                           # ode problem
-_name_ = "alphaparticle"
-epsilon = 0.15
+_name_ = "3body-2d"
+G = 1.0
+m1 = 1.0
+m2 = 1.0
+m3 = 1.0
 
 [algorithm]                         # data generation algorithm
 # Available _name_ options and required keys:
