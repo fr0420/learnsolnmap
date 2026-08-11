@@ -9,13 +9,14 @@ from typing import Dict, List, Optional
 class NonlinearCoupledOscillators(SeparableHamiltonianSystem):
     """Nonlinear coupled oscillators."""
 
-    def __init__(self, epsilon: float = 0.01) -> None:
+    def __init__(self, epsilon: float = 0.01, use_slow_fast_variables: bool = False) -> None:
         """Initialize the system."""
         super().__init__()
         
         # System parameters
         self.dof = 2
         self.epsilon = epsilon
+        self.use_slow_fast_variables = use_slow_fast_variables
         self.bounds = [
             (-1.6, 1.6), 
             (-self.epsilon*16, self.epsilon*16), 
@@ -149,10 +150,20 @@ class NonlinearCoupledOscillators(SeparableHamiltonianSystem):
         diff_squares = (u_nd - u_true_nd)**2
         abs_traj_errors = diff_squares.sum(dim=-1).sqrt()
         rel_traj_errors = abs_traj_errors / torch.sum(u_true_nd**2, dim=-1).sqrt()
-        osc1_abs_traj_errors = diff_squares[..., (0, 2)].sum(dim=-1).sqrt()
-        osc1_rel_traj_errors = osc1_abs_traj_errors / torch.sum(u_true_nd[..., (0, 2)]**2, dim=-1).sqrt()
-        osc2_abs_traj_errors = diff_squares[..., (1, 3)].sum(dim=-1).sqrt()
-        osc2_rel_traj_errors = osc2_abs_traj_errors / torch.sum(u_true_nd[..., (1, 3)]**2, dim=-1).sqrt()
+
+        if self.use_slow_fast_variables:
+            # u_nd is (p2, q2, p1, q1)
+            osc1_idx = (2, 3)
+            osc2_idx = (0, 1)
+        else:
+            # u_nd is (p1, p2, q1, q2)
+            osc1_idx = (0, 2)
+            osc2_idx = (1, 3)
+
+        osc1_abs_traj_errors = diff_squares[..., osc1_idx].sum(dim=-1).sqrt()
+        osc1_rel_traj_errors = osc1_abs_traj_errors / torch.sum(u_true_nd[..., osc1_idx]**2, dim=-1).sqrt()
+        osc2_abs_traj_errors = diff_squares[..., osc2_idx].sum(dim=-1).sqrt()
+        osc2_rel_traj_errors = osc2_abs_traj_errors / torch.sum(u_true_nd[..., osc2_idx]**2, dim=-1).sqrt()
         
         # Compute Hamiltonian errors
         H = self.compute_Hamiltonian(u, p)
@@ -209,26 +220,30 @@ class NonlinearCoupledOscillators(SeparableHamiltonianSystem):
     def nondim_u(self, u: torch.Tensor, p: Optional[Dict[str, torch.Tensor]]) -> torch.Tensor:
         """Nondimensionalize u = (v1, v2, x1, x2)."""
         u_nd = self.vx_to_pq(u, p)
-        u_nd = self.to_slow_fast_variables(u_nd)
+        if self.use_slow_fast_variables:
+            u_nd = self.to_slow_fast_variables(u_nd)
         return u_nd
     
     def dim_u(self, u_nd: torch.Tensor, p: Optional[Dict[str, torch.Tensor]]) -> torch.Tensor:
-        """Dimensionalize u_nd = (p1_nd, p2_nd, q1_nd, q2_nd)."""
+        """Dimensionalize u_nd."""
         u = u_nd.clone()
-        u = self.to_original_variables(u)
+        if self.use_slow_fast_variables:
+            u = self.to_original_variables(u)
         u = self.pq_to_vx(u, p)
         return u
 
     def nondim_du(self, du: torch.Tensor, p: Optional[Dict[str, torch.Tensor]]) -> torch.Tensor:
         """Nondimensionalize du = (dv1, dv2, dx1, dx2)."""
         du_nd = self.vx_to_pq(du, p)
-        du_nd = self.to_slow_fast_variables(du_nd)
+        if self.use_slow_fast_variables:
+            du_nd = self.to_slow_fast_variables(du_nd)
         return du_nd
 
     def dim_du(self, du_nd: torch.Tensor, p: Optional[Dict[str, torch.Tensor]]) -> torch.Tensor:
-        """Dimensionalize du_nd = (dp1_nd, dp2_nd, dq1_nd, dq2_nd)."""
+        """Dimensionalize du_nd."""
         du = du_nd.clone()
-        du = self.to_original_variables(du)
+        if self.use_slow_fast_variables:
+            du = self.to_original_variables(du)
         du = self.pq_to_vx(du, p)
         return du
     

@@ -39,6 +39,9 @@ class SolutionMapWithFSlowFast(BaseSolutionMap):
     ) -> None:
         super(SolutionMapWithFSlowFast, self).__init__(**kwargs)
 
+        if hasattr(self.problem, "use_slow_fast_variables"):
+            self.problem.use_slow_fast_variables = True
+
         if multiplier_activation is None:
             multiplier_activation = {"_target_": "torch.nn.Identity"}
         
