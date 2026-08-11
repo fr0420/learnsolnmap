@@ -1,7 +1,8 @@
 import os
 import numpy as np 
 import pandas as pd
-from .utils import States, Trajectory, Dataset
+from ..core import States, Trajectory, Dataset
+from .base import BaseProblem
 
 
 REF_TRAJ_FILEPATHS = {
@@ -16,10 +17,10 @@ REF_TRAJ_FILEPATHS = {
 }
 
 
-class Lorenz:
+class Lorenz(BaseProblem):
 
     def __init__(self, sigma=10., rho=28., beta=8/3.):
-        self.dof = 3
+        super().__init__(dof=3)
         self.sigma = sigma
         self.rho = rho
         self.beta = beta
@@ -32,6 +33,19 @@ class Lorenz:
             return self.sigma == other.sigma and self.rho == other.rho and self.beta == other.beta
         return NotImplemented
 
+    def get_pq(self, u):
+        """Convert state vector to position-momentum coordinates."""
+        return u[:, :2], u[:, 2:]  # (x,y), (z)
+    
+    def get_vx(self, u):
+        """Convert state vector to velocity-position coordinates."""
+        return u[:, :2], u[:, 2:]  # (dx/dt, dy/dt), (x, y, z)
+    
+    def convert_vx_to_pq(self, u):
+        """Convert velocity-position to position-momentum coordinates."""
+        # For Lorenz, we treat (dx/dt, dy/dt) as momenta and (x, y, z) as positions
+        return u
+    
     def get_xyz(self, u):
         return u[:, 0], u[:, 1], u[:, 2]
     
@@ -58,6 +72,40 @@ class Lorenz:
             "rel_traj_err": rel_traj_err,
         }
     
+    @classmethod
+    def get_reference_filepaths(cls, category='default'):
+        """
+        Get reference trajectory filepaths for Lorenz problem.
+        
+        Parameters:
+        -----------
+        category : str, optional
+            The category of reference trajectories to retrieve. Options:
+            - 'default': Standard Lorenz system trajectories
+            
+        Returns:
+        --------
+        dict
+            Dictionary containing reference trajectory filepaths organized by
+            initial condition indices.
+        """
+        if category == 'default':
+            return REF_TRAJ_FILEPATHS
+        else:
+            raise ValueError(f"Unknown category '{category}'. Available categories: {cls.get_available_reference_categories()}")
+    
+    @classmethod
+    def get_available_reference_categories(cls):
+        """
+        Get list of available reference trajectory categories for Lorenz.
+        
+        Returns:
+        --------
+        list
+            List of available category names for reference trajectories.
+        """
+        return ['default']
+
 
 class LorenzDataset(Dataset):
 

@@ -2,150 +2,198 @@ import os
 import numpy as np 
 import pandas as pd
 import torch
-from .utils import States, Trajectory, Dataset
+from ..core import States, Trajectory, Dataset
+from .base import BaseProblem
+from ..constants import BASE_OUTPUT_DIR
 
+# AlphaParticle-specific constants
 EPSILON_VAL1 = 0.05
 EPSILON_VAL2 = 0.15
 EPSILON_VAL3 = 0.27
 EPSILON_VAL4 = 0.3
 EPSILON_VAL5 = 0.4
 
+DT_0_01 = 0.01
+DT_0_1 = 0.1
+
+# Mapping from epsilon values to directory names
+EPSILON_TO_DIR = {
+    0.05: "eps=5e-2",
+    0.15: "eps=1.5e-1", 
+    0.27: "eps=2.7e-1",
+    0.3: "eps=3e-1",
+    0.4: "eps=4e-1",
+}
+
+
+def _build_alphaparticle_filepath(epsilon, initial_condition_idx, timestamp):
+    """Build filepath for alphaparticle trajectory files."""
+    if epsilon not in EPSILON_TO_DIR:
+        raise ValueError(f"Epsilon {epsilon} not found in EPSILON_TO_DIR")
+    return os.path.join(
+        BASE_OUTPUT_DIR, 
+        "alphaparticle", 
+        EPSILON_TO_DIR[epsilon], 
+        str(initial_condition_idx), 
+        timestamp, 
+        "ref", 
+        "u.csv"
+    )
+
+def _build_alphaparticle_poincare_dirpath(epsilon, category='default'):
+    """Build directory path for alphaparticle Poincaré section files."""
+    dirname = {
+        "default": "poincare", 
+        "implicit_midpoint_0_01": "poincare_im_T_5000"
+    }[category]
+    return os.path.join(
+        BASE_OUTPUT_DIR, 
+        "alphaparticle", 
+        EPSILON_TO_DIR[epsilon], 
+        dirname
+    )
+
+# Reference trajectory filepaths for different epsilon values and initial condition indices
+# generated with Vern9 method with dt=0.01
+# Each entry contains the filepath and time step (dt) for the reference trajectory
 REF_TRAJ_FILEPATHS = {
     EPSILON_VAL1: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=5e-2/1/202503070013/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL1, 1, "202503070013"),
+            "dt": DT_0_01,
         },
         2: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=5e-2/2/202503071136/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL1, 2, "202503071136"),
+            "dt": DT_0_01,
         },
         3: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=5e-2/3/202503081435/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL1, 3, "202503081435"),
+            "dt": DT_0_01,
         }
     },
     EPSILON_VAL2: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=1.5e-1/1/202503041218/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL2, 1, "202503041218"),
+            "dt": DT_0_01,
         },
         2: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=1.5e-1/2/202503071148/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL2, 2, "202503071148"),
+            "dt": DT_0_01,
         },
         3: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=1.5e-1/3/202503081405/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL2, 3, "202503081405"),
+            "dt": DT_0_01,
         },
     },
     EPSILON_VAL3: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=2.7e-1/1/202503070022/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL3, 1, "202503070022"),
+            "dt": DT_0_01,
         },
         2: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=2.7e-1/2/202503071208/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL3, 2, "202503071208"),
+            "dt": DT_0_01,
         },
         3: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=2.7e-1/3/202503081341/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL3, 3, "202503081341"),
+            "dt": DT_0_01,
         }
     },
     EPSILON_VAL4: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=3e-1/1/202503070152/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL4, 1, "202503070152"),
+            "dt": DT_0_01,
         },
         2: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=3e-1/2/202503071227/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL4, 2, "202503071227"),
+            "dt": DT_0_01,
         },
         3: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=3e-1/3/202503081227/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL4, 3, "202503081227"),
+            "dt": DT_0_01,
         }
     },
     EPSILON_VAL5: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=4e-1/1/202503070213/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL5, 1, "202503070213"),
+            "dt": DT_0_01,
         },
         2: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=4e-1/2/202503071236/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL5, 2, "202503071236"),
+            "dt": DT_0_01,
         },
         3: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=4e-1/3/202503071245/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL5, 3, "202503071245"),
+            "dt": DT_0_01,
         },
     },
 }
 
 
+# Reference trajectory filepaths generated with implicit midpoint method with dt=0.1
 IM_0_1_REF_TRAJ_FILEPATHS = {
     EPSILON_VAL1: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=5e-2/1/202503152107/ref/u.csv",
-            "dt": 0.1,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL1, 1, "202503152107"),
+            "dt": DT_0_1,
         },
     },
     EPSILON_VAL2: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=1.5e-1/1/202503152106/ref/u.csv",
-            "dt": 0.1,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL2, 1, "202503152106"),
+            "dt": DT_0_1,
         },
     },
     EPSILON_VAL3: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=2.7e-1/1/202503152105/ref/u.csv",
-            "dt": 0.1,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL3, 1, "202503152105"),
+            "dt": DT_0_1,
         },
     },
     EPSILON_VAL4: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=3e-1/1/202503152109/ref/u.csv",
-            "dt": 0.1,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL4, 1, "202503152109"),
+            "dt": DT_0_1,
         },
     },
     EPSILON_VAL5: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=4e-1/1/202503152111/ref/u.csv",
-            "dt": 0.1,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL5, 1, "202503152111"),
+            "dt": DT_0_1,
         },
     },
 }
 
+# Reference trajectory filepaths generated with implicit midpoint method with dt=0.01
 IM_0_01_REF_TRAJ_FILEPATHS = {
     EPSILON_VAL1: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=5e-2/1/202503162032/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL1, 1, "202503162032"),
+            "dt": DT_0_01,
         },
     },
     EPSILON_VAL2: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=1.5e-1/1/202503162017/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL2, 1, "202503162017"),
+            "dt": DT_0_01,
         },
     },
     EPSILON_VAL3: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=2.7e-1/1/202503162020/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL3, 1, "202503162020"),
+            "dt": DT_0_01,
         },
     },
     EPSILON_VAL4: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=3e-1/1/202503162023/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL4, 1, "202503162023"),
+            "dt": DT_0_01,
         },
     },
     EPSILON_VAL5: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/alphaparticle/eps=4e-1/1/202503162030/ref/u.csv",
-            "dt": 0.01,
+            "filepath": _build_alphaparticle_filepath(EPSILON_VAL5, 1, "202503162030"),
+            "dt": DT_0_01,
         },
     },
 }
@@ -473,10 +521,10 @@ def batch_poincare_section(u0, Phi, h, direction='both', dt=0.01, T=100, tol=1e-
     return intersections
 
 
-class AlphaParticle:
+class AlphaParticle(BaseProblem):
 
     def __init__(self, epsilon=0.05, a1=0.3):
-        self.dof = 4
+        super().__init__(dof=4)
         self.epsilon = epsilon
             
         self.B0 = 1.0
@@ -494,6 +542,28 @@ class AlphaParticle:
         if isinstance(other, AlphaParticle):
             return self.epsilon == other.epsilon and self.a1 == other.a1
         return NotImplemented
+    
+    @classmethod
+    def get_reference_filepaths(cls, category='default'):
+        if category == 'default':
+            return REF_TRAJ_FILEPATHS
+        elif category == 'implicit_midpoint_0_1':
+            return IM_0_1_REF_TRAJ_FILEPATHS
+        elif category == 'implicit_midpoint_0_01':
+            return IM_0_01_REF_TRAJ_FILEPATHS
+        else:
+            raise ValueError(f"Unknown category '{category}'. Available categories: {cls.get_available_reference_categories()}")
+    
+    @classmethod
+    def get_available_reference_categories(cls):
+        return ['default', 'implicit_midpoint_0_1', 'implicit_midpoint_0_01']
+
+    def get_poincare_reference_filepaths(self, category='default'):
+        dirpath = _build_alphaparticle_poincare_dirpath(self.epsilon, category)
+        subdirs = os.listdir(dirpath)
+        subdirs = sorted(subdirs, key=lambda x: int(x))
+        filepaths = [os.path.join(dirpath, subdir, "u.csv") for subdir in subdirs]
+        return filepaths
 
     def get_xy(self, u):
         return u[:, 2], u[:, 3]

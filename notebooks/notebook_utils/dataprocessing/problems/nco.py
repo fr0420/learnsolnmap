@@ -1,115 +1,186 @@
+import os
 import numpy as np 
 import pandas as pd
-from .utils import States, Trajectory, Dataset
+from ..core import States, Trajectory, Dataset
+from .base import BaseProblem
+from ..constants import BASE_OUTPUT_DIR
 
+# NCO-specific constants
+EPSILON_VAL1 = 0.01
+
+DT_0_01 = 0.01
+DT_0_05 = 0.05
+
+# Mapping from epsilon values to directory names
+EPSILON_TO_DIR = {
+    0.01: "eps=1e-2",
+}
+
+def _build_nco_filepath(epsilon, initial_condition_idx, timestamp, category='constant_energy'):
+    """Build filepath for NCO trajectory files."""
+    if epsilon not in EPSILON_TO_DIR:
+        raise ValueError(f"Epsilon {epsilon} not found in EPSILON_TO_DIR")
+    
+    if category == 'constant_energy':
+        dirname = f"const_energy_{initial_condition_idx}"
+    elif category == 'fixed_q1':
+        dirname = f"202407110236_{initial_condition_idx}"
+    elif category == 'vv_constant_energy':
+        dirname = f"const_energy_{initial_condition_idx}"
+    else:
+        raise ValueError(f"Unknown category {category}")
+    
+    return os.path.join(
+        BASE_OUTPUT_DIR, 
+        "nco", 
+        EPSILON_TO_DIR[epsilon], 
+        dirname,
+        timestamp,
+        "ref", 
+        "k=0" if category != 'vv_constant_energy' else "",
+        "u.csv"
+    ).replace("//", "/")
+
+# Reference trajectory filepaths for different epsilon values and initial condition indices
+# Each entry contains the filepath and time step (dt) for the reference trajectory
 CONSTANT_ENERGY_REF_TRAJ_FILEPATHS = {
-    1: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/const_energy_1/202405091928/ref/k=0/u.csv",
-        "dt": 0.05,
-    },
-    2: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/const_energy_2/202406151238/ref/k=0/u.csv",
-        "dt": 0.05,
-    },
-    3: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/const_energy_3/202405301406/ref/k=0/u.csv",
-        "dt": 0.05,
+    EPSILON_VAL1: {
+        1: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 1, "202405091928", "constant_energy"),
+            "dt": DT_0_05,
+        },
+        2: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 2, "202406151238", "constant_energy"),
+            "dt": DT_0_05,
+        },
+        3: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 3, "202405301406", "constant_energy"),
+            "dt": DT_0_05,
+        }
     }
 }
 
 FIXED_Q1_REF_TRAJ_FILEPATHS = {
-    1: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/202407110236_1/ref/k=0/u.csv",
-        "dt": 0.05,
-    },
-    2: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/202407110236_2/ref/k=0/u.csv",
-        "dt": 0.05,
-    },
-    3: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/202407110236_3/ref/k=0/u.csv",
-        "dt": 0.05,
-    },
-    4: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/202407110236_4/ref/k=0/u.csv",
-        "dt": 0.05,
-    },
-    5: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/202407110236_5/ref/k=0/u.csv",
-        "dt": 0.05,
-    },
-    6: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/202407110236_6/ref/k=0/u.csv",
-        "dt": 0.05,
-    },
-    7: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/202407110236_7/ref/k=0/u.csv",
-        "dt": 0.05,
-    },
-    8: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/202407110236_8/ref/k=0/u.csv",
-        "dt": 0.05,
-    },
-    9: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/202407110236_9/ref/k=0/u.csv",
-        "dt": 0.05,
-    },
-    10: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/202407110236_10/ref/k=0/u.csv",
-        "dt": 0.05,
-    },
-    11: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/202407110236_11/ref/k=0/u.csv",
-        "dt": 0.05,
-    }   
+    EPSILON_VAL1: {
+        1: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 1, "", "fixed_q1"),
+            "dt": DT_0_05,
+        },
+        2: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 2, "", "fixed_q1"),
+            "dt": DT_0_05,
+        },
+        3: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 3, "", "fixed_q1"),
+            "dt": DT_0_05,
+        },
+        4: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 4, "", "fixed_q1"),
+            "dt": DT_0_05,
+        },
+        5: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 5, "", "fixed_q1"),
+            "dt": DT_0_05,
+        },
+        6: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 6, "", "fixed_q1"),
+            "dt": DT_0_05,
+        },
+        7: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 7, "", "fixed_q1"),
+            "dt": DT_0_05,
+        },
+        8: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 8, "", "fixed_q1"),
+            "dt": DT_0_05,
+        },
+        9: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 9, "", "fixed_q1"),
+            "dt": DT_0_05,
+        },
+        10: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 10, "", "fixed_q1"),
+            "dt": DT_0_05,
+        },
+        11: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 11, "", "fixed_q1"),
+            "dt": DT_0_05,
+        }   
+    }
 }
 
+# Reference trajectory filepaths generated with Velocity-Verlet method with dt=0.01
 VV_0_01_CONSTANT_ENERGY_REF_TRAJ_FILEPATHS = {
-    1: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/const_energy_1/202503242022/ref/u.csv",
-        "dt": 0.01,
-    },
-    2: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/const_energy_2/202503242240/ref/u.csv",
-        "dt": 0.01,
-    },
-    3: {
-        "filepath": "/workspace/projects_rui/learnsolnmap/out/nco/eps=1e-2/const_energy_3/202503242247/ref/u.csv",
-        "dt": 0.01,
-    },
-}
-
-REF_TRAJ_DT = 0.05
-REF_TRAJ_FILEPATHS = {
-    1: "/workspace/projects_rui/learnsolnmap/out/nco/202405091928/ref/k=0/u.csv",
-    2: "/workspace/projects_rui/learnsolnmap/out/nco/202407110236_1/ref/k=0/u.csv",
-    3: "/workspace/projects_rui/learnsolnmap/out/nco/202407110236_2/ref/k=0/u.csv",
-    4: "/workspace/projects_rui/learnsolnmap/out/nco/202407110236_3/ref/k=0/u.csv",
-    5: "/workspace/projects_rui/learnsolnmap/out/nco/202407110236_4/ref/k=0/u.csv",
-    6: "/workspace/projects_rui/learnsolnmap/out/nco/202407110236_5/ref/k=0/u.csv",
-    7: "/workspace/projects_rui/learnsolnmap/out/nco/202407110236_6/ref/k=0/u.csv",
-    8: "/workspace/projects_rui/learnsolnmap/out/nco/202407110236_7/ref/k=0/u.csv",
-    11: "/workspace/projects_rui/learnsolnmap/out/nco/202405301406/ref/k=0/u.csv",
-    12: "/workspace/projects_rui/learnsolnmap/out/nco/202406151238/ref/k=0/u.csv",
-    13: "/workspace/projects_rui/learnsolnmap/out/nco/202407110236_8/ref/k=0/u.csv",
-    14: "/workspace/projects_rui/learnsolnmap/out/nco/202407110236_9/ref/k=0/u.csv",
-    15: "/workspace/projects_rui/learnsolnmap/out/nco/202407110236_10/ref/k=0/u.csv",
-    16: "/workspace/projects_rui/learnsolnmap/out/nco/202407110236_11/ref/k=0/u.csv",
+    EPSILON_VAL1: {
+        1: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 1, "202503242022", "vv_constant_energy"),
+            "dt": DT_0_01,
+        },
+        2: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 2, "202503242240", "vv_constant_energy"),
+            "dt": DT_0_01,
+        },
+        3: {
+            "filepath": _build_nco_filepath(EPSILON_VAL1, 3, "202503242247", "vv_constant_energy"),
+            "dt": DT_0_01,
+        },
+    }
 }
 
 
-class NCO:
+class NCO(BaseProblem):
+
     def __init__(self, epsilon=0.01):
+        super().__init__(dof=2)
         self.epsilon = epsilon
-        self.dof = 2
     
+    def __repr__(self):
+        return f"NCO(epsilon={self.epsilon})"
+
     def __eq__(self, other):
         if isinstance(other, NCO):
             return self.epsilon == other.epsilon
         return NotImplemented
     
-    def __repr__(self):
-        return f"NCO(epsilon={self.epsilon})"
+    @classmethod
+    def get_reference_filepaths(cls, category='constant_energy'):
+        """
+        Get reference trajectory filepaths for NCO problem.
+        
+        Parameters:
+        -----------
+        category : str, optional
+            The category of reference trajectories to retrieve. Options:
+            - 'constant_energy': Constant energy initial conditions (default)
+            - 'fixed_q1': Fixed q1 initial conditions
+            - 'vv_constant_energy': Velocity-Verlet with constant energy initial conditions
+            
+        Returns:
+        --------
+        dict
+            Dictionary containing reference trajectory filepaths organized by
+            initial condition indices.
+        """
+        if category == 'constant_energy':
+            return CONSTANT_ENERGY_REF_TRAJ_FILEPATHS
+        elif category == 'fixed_q1':
+            return FIXED_Q1_REF_TRAJ_FILEPATHS
+        elif category == 'vv_constant_energy':
+            return VV_0_01_CONSTANT_ENERGY_REF_TRAJ_FILEPATHS
+        else:
+            raise ValueError(f"Unknown category '{category}'. Available categories: {cls.get_available_reference_categories()}")
+    
+    @classmethod
+    def get_available_reference_categories(cls):
+        """
+        Get list of available reference trajectory categories for NCO.
+        
+        Returns:
+        --------
+        list
+            List of available category names for reference trajectories.
+        """
+        return ['constant_energy', 'fixed_q1', 'vv_constant_energy']
     
     def get_pq(self, u):
         p1, p2, q1, q2 = u[..., 0], u[..., 1], u[..., 2], u[..., 3]
@@ -309,6 +380,8 @@ class NCO:
     
     def compute_hessian_H(self, u):
         """
+        Compute the Hessian of the Hamiltonian H with respect to (p1, p2, q1, q2).
+        
         [[d^2H/dp1^2, d^2H/dp1dp2, d^2H/dp1dq1, d^2H/dp1dq2],
          [d^2H/dp2dp1, d^2H/dp2^2, d^2H/dp2dq1, d^2H/dp2dq2],
          [d^2H/dq1dp1, d^2H/dq1dp2, d^2H/dq1^2, d^2H/dq1dq2],
@@ -412,27 +485,35 @@ class NCO:
             return u0 + t * self.pq_to_vx(du) + 0.5 * t**2 * self.pq_to_vx(ddu)
         else:
             raise ValueError("Only orders 0, 1, and 2 are supported.")
-
+    
 class NCODataset(Dataset):
 
     @classmethod
-    def load_from_file(cls, filepath, name="none", epsilon=0.01):
+    def load_from_file(cls, filepath, name="none", **kwargs):
         df = pd.read_csv(filepath)
-        data = States(df.values, NCO(epsilon))
+        data = States(df.values, NCO(**kwargs))
         return cls(data, name)
     
-    def from_vx(cls, vx, name="none", epsilon=0.01):
-        return cls(States(vx, NCO(epsilon)), name)
+    @classmethod
+    def from_vx(cls, vx, name="none", **kwargs):
+        return cls(States(vx, NCO(**kwargs)), name)
+
 
 class NCOTrajectory(Trajectory): 
 
     @classmethod
-    def load_from_file(cls, filepath, dt=0.05, epsilon=0.01):
+    def load_from_file(cls, filepath, dt=None, **kwargs):
         df = pd.read_csv(filepath)
-        states = States(df.values, NCO(epsilon))
-        times = np.arange(0, len(states)) * dt
+        states = States(df.values, NCO(**kwargs))
+        times_filepath = filepath.replace("u.csv", "t.csv")
+        if os.path.exists(times_filepath):
+            times = pd.read_csv(times_filepath).values.flatten()
+        elif dt is not None:
+            times = np.arange(0, len(states)) * dt
+        else:
+            raise ValueError("Either provide a valid dt or a times file.")
         return cls(times, states)
-        
+
     @classmethod
-    def from_vx(cls, times, vx, epsilon=0.01):
-        return cls(times, States(vx, NCO(epsilon)))
+    def from_vx(cls, times, vx, **kwargs):
+        return cls(times, States(vx, NCO(**kwargs)))

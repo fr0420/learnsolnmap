@@ -1,6 +1,7 @@
 import numpy as np 
 import pandas as pd
-from .utils import States, Trajectory, Dataset
+from ..core import States, Trajectory, Dataset
+from .base import BaseProblem
 
 
 REF_TRAJ_DT = 1e-2 
@@ -9,14 +10,14 @@ REF_TRAJ_FILEPATHS = {
     0: "/workspace/projects_rui/learnsolnmap/out/3body/202410232146/ref/k=0/u.csv",
 }
 
-class ThreeBody:
+class ThreeBody(BaseProblem):
 
     def __init__(self, m1=100., m2=1., m3=0.001, G=1.):
+        super().__init__(dof=9)
         self.m1 = m1
         self.m2 = m2
         self.m3 = m3
         self.G = G
-        self.dof = 9
     
     def __eq__(self, other):
         if isinstance(other, ThreeBody):
@@ -140,6 +141,47 @@ class ThreeBody:
             "rel_H_err": rel_H_err
         }
     
+    @classmethod
+    def get_reference_filepaths(cls, category='default'):
+        """
+        Get reference trajectory filepaths for ThreeBody problem.
+        
+        Parameters:
+        -----------
+        category : str, optional
+            The category of reference trajectories to retrieve. Options:
+            - 'default': Standard three-body problem trajectories
+            
+        Returns:
+        --------
+        dict
+            Dictionary containing reference trajectory filepaths organized by
+            initial condition indices.
+        """
+        if category == 'default':
+            # Convert simple format to standard format
+            result = {}
+            for ic_idx, filepath in REF_TRAJ_FILEPATHS.items():
+                result[ic_idx] = {
+                    "filepath": filepath,
+                    "dt": REF_TRAJ_DT
+                }
+            return result
+        else:
+            raise ValueError(f"Unknown category '{category}'. Available categories: {cls.get_available_reference_categories()}")
+    
+    @classmethod
+    def get_available_reference_categories(cls):
+        """
+        Get list of available reference trajectory categories for ThreeBody.
+        
+        Returns:
+        --------
+        list
+            List of available category names for reference trajectories.
+        """
+        return ['default']
+
 
 class ThreeBodyDataset(Dataset):
 

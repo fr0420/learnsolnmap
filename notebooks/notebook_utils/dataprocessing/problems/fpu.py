@@ -1,61 +1,90 @@
+import os
 import numpy as np 
 import pandas as pd
-from .utils import States, Trajectory, Dataset
+from ..core import States, Trajectory, Dataset
+from .base import BaseProblem
+from ..constants import BASE_OUTPUT_DIR
 
-
+# FPU-specific constants
 OMEGA_VAL1 = 50.
 OMEGA_VAL2 = 100.
 OMEGA_VAL3 = 300.
 
-REF_TRAJ_FILEPATHS = {
+# Mapping from omega values to directory names
+OMEGA_TO_DIR = {
+    50.: "omega=50",
+    100.: "omega=100", 
+    300.: "omega=300",
+}
+
+def _build_fpu_filepath(omega, initial_condition_idx, timestamp, category='default'):
+    """Build filepath for FPU trajectory files."""
+    if omega not in OMEGA_TO_DIR:
+        raise ValueError(f"Omega {omega} not found in OMEGA_TO_DIR")
+    
+    if category == 'default':
+        dirname = f"{initial_condition_idx}"
+    elif category == 'vv':
+        dirname = f"{initial_condition_idx}"
+    else:
+        raise ValueError(f"Unknown category {category}")
+    
+    return os.path.join(
+        BASE_OUTPUT_DIR, 
+        "fpu", 
+        OMEGA_TO_DIR[omega], 
+        dirname,
+        timestamp,
+        "ref",
+        "u.csv"
+    ).replace("//", "/")
+
+# Reference trajectory filepaths for different omega values and initial condition indices
+# Each entry contains the filepath and time step (dt) for the reference trajectory
+DEFAULT_REF_TRAJ_FILEPATHS = {
     OMEGA_VAL1: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/fpu/omega=50/1/202410071715/ref/k=0/u.csv",
+            "filepath": _build_fpu_filepath(OMEGA_VAL1, 1, "202410071715", "default"),
             "dt": 0.00390625,
         },
         2: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/fpu/omega=50/2/202504070101/ref/u.csv",
+            "filepath": _build_fpu_filepath(OMEGA_VAL1, 2, "202504070101", "default"),
             "dt": 0.0009765625,
         }
     }, 
     OMEGA_VAL2: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/fpu/omega=100/1/202504051956/ref/u.csv",
+            "filepath": _build_fpu_filepath(OMEGA_VAL2, 1, "202504051956", "default"),
             "dt": 0.0009765625,
         },
     }, 
     OMEGA_VAL3: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/fpu/omega=300/1/202503252227/ref/u.csv",
+            "filepath": _build_fpu_filepath(OMEGA_VAL3, 1, "202503252227", "default"),
             "dt": 0.0009765625,
         },
         2: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/fpu/omega=300/2/202504061417/ref/u.csv",
+            "filepath": _build_fpu_filepath(OMEGA_VAL3, 2, "202504061417", "default"),
             "dt": 0.0009765625,
         }
     }
 }
 
-VV_TRAJ_FILEPATHS = {
+# Reference trajectory filepaths generated with Velocity-Verlet method
+VV_REF_TRAJ_FILEPATHS = {
     OMEGA_VAL1: {
         1: {
-            "filepath": "/workspace/projects_rui/learnsolnmap/out/fpu/omega=50/1/202503271137/ref/u.csv",
+            "filepath": _build_fpu_filepath(OMEGA_VAL1, 1, "202503271137", "vv"),
             "dt": 0.00390625,
         },
-    }, 
-    # OMEGA_VAL2: {
-    #     1: {
-    #         "filepath": "/workspace/projects_rui/learnsolnmap/out/fpu/omega=300/1/202503252227/vv/u.csv",
-    #         "dt": 0.0009765625,
-    #     },
-    # }
+    }
 }
 
-class FPU:
+class FPU(BaseProblem):
 
     def __init__(self, omega=50.):
+        super().__init__(dof=6)
         self.omega = omega
-        self.dof = 6
     
     def __eq__(self, other):
         if isinstance(other, FPU):
@@ -323,33 +352,73 @@ class FPU:
             return u0 + t * du + 0.5 * t**2 * ddu
         else:
             raise ValueError("Only orders 0, 1, and 2 are supported.")
-
-
     
+    @classmethod
+    def get_reference_filepaths(cls, category='default'):
+        """
+        Get reference trajectory filepaths for FPU problem.
+        
+        Parameters:
+        -----------
+        category : str, optional
+            The category of reference trajectories to retrieve. Options:
+            - 'default': Standard reference trajectories
+            - 'vv': Velocity-Verlet method trajectories
+            
+        Returns:
+        --------
+        dict
+            Dictionary containing reference trajectory filepaths organized by
+            omega values and initial condition indices.
+        """
+        if category == 'default':
+            return DEFAULT_REF_TRAJ_FILEPATHS
+        elif category == 'vv':
+            return VV_REF_TRAJ_FILEPATHS
+        else:
+            raise ValueError(f"Unknown category '{category}'. Available categories: {cls.get_available_reference_categories()}")
+    
+    @classmethod
+    def get_available_reference_categories(cls):
+        """
+        Get list of available reference trajectory categories for FPU.
+        
+        Returns:
+        --------
+        list
+            List of available category names for reference trajectories.
+        """
+        return ['default', 'vv']
+
 
 class FPUDataset(Dataset):
 
     @classmethod
-    def load_from_file(cls, filepath, name="none", omega=50.):
+    def load_from_file(cls, filepath, name="none", **kwargs):
         df = pd.read_csv(filepath)
-        data = States(df.values, FPU(omega))
+        data = States(df.values, FPU(**kwargs))
         return cls(data, name)
     
     @classmethod
-    def from_vx(cls, vx, name="none", omega=50.):
-        return cls(States(vx, FPU(omega)), name)
-    
-    
+    def from_vx(cls, vx, name="none", **kwargs):
+        return cls(States(vx, FPU(**kwargs)), name)
+
 
 class FPUTrajectory(Trajectory): 
 
     @classmethod
-    def load_from_file(cls, filepath, dt, omega=50.):
+    def load_from_file(cls, filepath, dt=None, **kwargs):
         df = pd.read_csv(filepath)
-        states = States(df.values, FPU(omega))
-        times = np.arange(0, len(states)) * dt
+        states = States(df.values, FPU(**kwargs))
+        times_filepath = filepath.replace("u.csv", "t.csv")
+        if os.path.exists(times_filepath):
+            times = pd.read_csv(times_filepath).values.flatten()
+        elif dt is not None:
+            times = np.arange(0, len(states)) * dt
+        else:
+            raise ValueError("Either provide a valid dt or a times file.")
         return cls(times, states)
 
     @classmethod
-    def from_vx(cls, times, vx, omega=50.):
-        return cls(times, States(vx, FPU(omega)))
+    def from_vx(cls, times, vx, **kwargs):
+        return cls(times, States(vx, FPU(**kwargs)))

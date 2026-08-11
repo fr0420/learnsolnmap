@@ -1,7 +1,8 @@
 import os
 import numpy as np 
 import pandas as pd
-from .utils import States, Trajectory, Dataset
+from ..core import States, Trajectory, Dataset
+from .base import BaseProblem
 
 
 REF_TRAJ_FILEPATHS = {
@@ -95,14 +96,14 @@ def get_rotation_matrices(vectors, target_vector):
     return rotation_matrices
 
 
-class ThreeBody2D:
+class ThreeBody2D(BaseProblem):
 
     def __init__(self, m1=100., m2=1., m3=0.001, G=1.):
+        super().__init__(dof=6)
         self.m1 = m1
         self.m2 = m2
         self.m3 = m3
         self.G = G
-        self.dof = 6
     
     def __eq__(self, other):
         if isinstance(other, ThreeBody2D):
@@ -457,6 +458,43 @@ class ThreeBody2D:
             return u0 + t * du + 0.5 * t**2 * ddu
         else:
             raise ValueError("Only orders 0, 1, and 2 are supported.")
+    
+    @classmethod
+    def get_reference_filepaths(cls, category='default'):
+        """
+        Get reference trajectory filepaths for ThreeBody2D problem.
+        
+        Parameters:
+        -----------
+        category : str, optional
+            The category of reference trajectories to retrieve. Options:
+            - 'default': Standard three-body problem trajectories
+            - 'equalmass': Equal mass three-body problem trajectories
+            
+        Returns:
+        --------
+        dict
+            Dictionary containing reference trajectory filepaths organized by
+            initial condition indices.
+        """
+        if category == 'default':
+            return REF_TRAJ_FILEPATHS
+        elif category == 'equalmass':
+            return EQUALMASS_REF_TRAJ_FILEPATHS
+        else:
+            raise ValueError(f"Unknown category '{category}'. Available categories: {cls.get_available_reference_categories()}")
+    
+    @classmethod
+    def get_available_reference_categories(cls):
+        """
+        Get list of available reference trajectory categories for ThreeBody2D.
+        
+        Returns:
+        --------
+        list
+            List of available category names for reference trajectories.
+        """
+        return ['default', 'equalmass']
 
 
 class ThreeBody2DDataset(Dataset):

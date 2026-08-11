@@ -1,40 +1,5 @@
-import numpy as np 
-import pandas as pd
-from scipy.ndimage import gaussian_filter1d
-from sklearn.metrics import pairwise_kernels
-from wasserstein import wasserstein_distance_nd
-
-
-def smooth_data(data, sigma=10):
-    """
-    Smooth the data using a Gaussian filter.
-    Args:
-        data (np.array): The input data array to smooth.
-        sigma (int): The standard deviation for Gaussian kernel.
-    Returns:
-        np.array: Smoothed data.
-    """
-    return gaussian_filter1d(data, sigma=sigma)
-
-
-def mmd(X, Y, kernel="rbf"):
-    """
-    Compute the Maximum Mean Discrepancy (MMD) between two datasets.
-    Args:
-        X (np.array): The first dataset. Shape=(len(X), n_features)
-        Y (np.array): The second dataset. Shape=(len(Y), n_features)
-        kernel (str): The kernel function to use.
-    Returns:
-        float: The MMD value.
-    """
-
-    # Calculate the kernel matrix
-    XX = pairwise_kernels(X, X, metric=kernel)
-    YY = pairwise_kernels(Y, Y, metric=kernel)
-    XY = pairwise_kernels(X, Y, metric=kernel)
-
-    # Compute MMD statistic
-    return XX.mean() + YY.mean() - 2 * XY.mean()
+import numpy as np
+from .utils import mmd, is_multiple, find_quotient
 
 
 class States:
@@ -141,17 +106,6 @@ class Dataset:
         return mmd(dataset1.states.u, dataset2.states.u, kernel)
 
 
-def is_multiple(x, y):
-    quotient = x / y
-    rounded_quotient = round(quotient)
-    return abs(rounded_quotient * y - x) < 1e-9  # Adjust threshold as needed
-
-def find_quotient(x, y):
-    quotient = x / y
-    rounded_quotient = round(quotient)
-    return rounded_quotient
-
-
 class Trajectory:
     """A trajectory of states at different times."""
 
@@ -192,7 +146,7 @@ class Trajectory:
         return self[idx]
 
     def compare(self, ref_traj):
-        matched_traj, matched_ref_traj = Trajectory.intersect(self, ref_traj)
+        matched_traj, matched_ref_traj = intersect_trajectories(self, ref_traj)
         if matched_traj is None or matched_ref_traj is None:
             print("Trajectories could not be intersected with matched intervals.")
             return None
@@ -210,18 +164,42 @@ class Trajectory:
         else:
             return times[idx[0]-1] 
 
-    @staticmethod
-    def intersect(traj1, traj2, match_dt=True):
-        if len(traj1) == 0 or len(traj2) == 0:
-            raise ValueError("Trajectories cannot be empty")
-        t0 = max(traj1.times[0], traj2.times[0])
-        t1 = min(traj1.times[-1], traj2.times[-1])
-        if match_dt and traj1.dt is not None and traj2.dt is not None:
-            dt = max(traj1.dt, traj2.dt)
-            try:
-                return traj1.select_between(t0, t1).select_with_interval(dt), traj2.select_between(t0, t1).select_with_interval(dt)
-            except AssertionError as e:
-                print(e)
-                return None, None
-        else:
-            return traj1.select_between(t0, t1), traj2.select_between(t0, t1)
+    def intersect(self, ref_traj, match_dt=True):
+        """
+        Align this trajectory with a reference trajectory.
+        
+        Args:
+            ref_traj: Reference trajectory to align with
+            match_dt: Whether to match time steps between trajectories
+            
+        Returns:
+            tuple: (matched_traj, matched_ref_traj) or (None, None) if alignment fails
+        """
+        return intersect_trajectories(self, ref_traj, match_dt)
+
+
+def intersect_trajectories(traj1, traj2, match_dt=True):
+    """
+    Helper function to align two trajectories to their common time range.
+    
+    Args:
+        traj1: First trajectory
+        traj2: Second trajectory  
+        match_dt: Whether to match time steps between trajectories
+        
+    Returns:
+        tuple: (matched_traj1, matched_traj2) or (None, None) if alignment fails
+    """
+    if len(traj1) == 0 or len(traj2) == 0:
+        raise ValueError("Trajectories cannot be empty")
+    t0 = max(traj1.times[0], traj2.times[0])
+    t1 = min(traj1.times[-1], traj2.times[-1])
+    if match_dt and traj1.dt is not None and traj2.dt is not None:
+        dt = max(traj1.dt, traj2.dt)
+        try:
+            return traj1.select_between(t0, t1).select_with_interval(dt), traj2.select_between(t0, t1).select_with_interval(dt)
+        except AssertionError as e:
+            print(e)
+            return None, None
+    else:
+        return traj1.select_between(t0, t1), traj2.select_between(t0, t1)
