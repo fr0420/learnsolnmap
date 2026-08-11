@@ -1,2 +1,3 @@
 _target_: problems.nco.NonlinearCoupledOscillators
 epsilon: 0.01
+use_slow_fast_variables: false

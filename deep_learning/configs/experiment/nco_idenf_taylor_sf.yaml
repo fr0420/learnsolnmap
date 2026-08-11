@@ -60,6 +60,7 @@ trainer:
 module:
   problem:
     epsilon: 1e-2
+    use_slow_fast_variables: true
 
   order_slow: 2
   order_fast: 0
