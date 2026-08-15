@@ -1,7 +1,7 @@
 _target_: networks.henon.HenonNet
-dof: 6
-hidden_dim: 500
+dof: 2
+hidden_dim: 10
 n_hidden_layers: 1
-n_henon_layers: 5
+n_henon_layers: 16
 activation:
-  _target_: torch.nn.ELU
+  _target_: torch.nn.Tanh
