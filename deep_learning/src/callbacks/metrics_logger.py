@@ -21,6 +21,9 @@ class ManualMetricsLogger(Callback):
         elif stage == "test":
             outputs = pl_module.test_step_outputs
         
+        if not outputs:
+            return
+        
         n_total = sum([out["batch_size"] for out in outputs])
         
         def aggregate_outputs(m):
