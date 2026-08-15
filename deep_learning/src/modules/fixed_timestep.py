@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List, Optional
 
 import hydra
 from omegaconf import DictConfig
@@ -32,23 +32,35 @@ class FixedStepSolutionMap(BaseSolutionMap):
         if self.weight_init is not None:
             self._init_weights()
     
-    def predict_sequence(self, u0: torch.Tensor, t: torch.Tensor, sequence_len: int) -> List[torch.Tensor]:
-        return self(u0, t, sequence_len=sequence_len)
+    def predict_sequence(
+        self,
+        u0: torch.Tensor,
+        t: Optional[torch.Tensor] = None,
+        p: Optional[Dict[str, torch.Tensor]] = None,
+        sequence_len: int = 2
+    ) -> List[torch.Tensor]:
+        return self(u0, t=t, p=p, sequence_len=sequence_len)
     
-    def forward(self, u0: torch.Tensor, t: torch.Tensor, sequence_len: int) -> List[torch.Tensor]:
+    def forward(
+        self,
+        u0: torch.Tensor,
+        t: Optional[torch.Tensor] = None,
+        p: Optional[Dict[str, torch.Tensor]] = None,
+        sequence_len: int = 2
+    ) -> List[torch.Tensor]:
         res = []
 
-        u0 = self._apply_nondim(u0)
+        u0 = self._apply_nondim(u0, p)
 
         hidden = self.i2h(u0)
         out = self.h2o(hidden)
-        out = self._apply_dim(out)
+        out = self._apply_dim(out, p)
         res.append(out)
 
-        for _ in range(sequence_len-1):
+        for _ in range(sequence_len - 1):
             hidden = self.h2h(hidden)
             out = self.h2o(hidden)
-            out = self._apply_dim(out)
+            out = self._apply_dim(out, p)
             res.append(out)
 
         return res

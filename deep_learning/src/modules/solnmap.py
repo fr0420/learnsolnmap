@@ -60,12 +60,12 @@ class BaseSolutionMap(BaseLitModel):
             if not callable(getattr(self.problem, method, None)):
                 raise NotImplementedError(f"Method {method} is required for dimensionless calculations.")
     
-    def _apply_nondim(self, u: torch.Tensor, p: Dict[str, torch.Tensor], deriv_mode: bool = False) -> torch.Tensor:
+    def _apply_nondim(self, u: torch.Tensor, p: Optional[Dict[str, torch.Tensor]] = None, deriv_mode: bool = False) -> torch.Tensor:
         if self.use_dimensionless:
             return self.problem.nondim_u(u, p) if not deriv_mode else self.problem.nondim_du(u, p)
         return u
     
-    def _apply_dim(self, u: torch.Tensor, p: Dict[str, torch.Tensor], deriv_mode: bool = False) -> torch.Tensor:
+    def _apply_dim(self, u: torch.Tensor, p: Optional[Dict[str, torch.Tensor]] = None, deriv_mode: bool = False) -> torch.Tensor:
         if self.use_dimensionless:
             return self.problem.dim_u(u, p) if not deriv_mode else self.problem.dim_du(u, p)
         return u
@@ -101,10 +101,10 @@ class BaseSolutionMap(BaseLitModel):
                     raise KeyError(f"Expected parameter '{key}' not found in input dictionary p.")
         return params_to_use
         
-    def forward(self, u0: torch.Tensor, t: torch.Tensor, p: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def forward(self, u0: torch.Tensor, t: Optional[torch.Tensor] = None, p: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
         pass 
     
-    def predict_sequence(self, u0: torch.Tensor, t: torch.Tensor, p: Dict[str, torch.Tensor], sequence_len: int) -> List[torch.Tensor]:
+    def predict_sequence(self, u0: torch.Tensor, t: Optional[torch.Tensor] = None, p: Optional[Dict[str, torch.Tensor]] = None, sequence_len: int = 2) -> List[torch.Tensor]:
         pred_seq = [u0]
         u = u0
         for _ in range(sequence_len-1):
@@ -122,8 +122,8 @@ class BaseSolutionMap(BaseLitModel):
         return self.model_step(batch, batch_idx, "test")
     
     def predict_step(self, batch, batch_idx, sequence_len=2):
-        u0, t, _, _, _, _, _ = self._unpack_batch(batch)
-        pred_seq = self.predict_sequence(u0, t, sequence_len)
+        u0, t, p, _, _, _, _ = self._unpack_batch(batch)
+        pred_seq = self.predict_sequence(u0, t, p, sequence_len=sequence_len)
         batch["pred_seq"] = pred_seq
         return batch
     
