@@ -162,6 +162,8 @@ def one_step_predict(model: torch.nn.Module, u0: np.ndarray, t: Union[float, Lis
     """
     u0_torch, t_torch, p_torch = prepare_model_inputs(u0, t, params, model)
     u = model(u0_torch, t_torch, p_torch)
+    if isinstance(u, list):  # FixedStepSolutionMap returns a list of predictions
+        u = u[-1]
     
     # Return scalar if single time, array if multiple times
     if isinstance(t, (int, float)) or (isinstance(t, np.ndarray) and t.ndim == 0):
@@ -294,6 +296,8 @@ def batch_recursive_predict(model: torch.nn.Module, u0_list: List[np.ndarray], d
         u = u0_torch
         for _ in range(sequence_len - 1):
             u = model(u, t_torch, p_torch)
+            if isinstance(u, list):  # FixedStepSolutionMap returns a list of predictions
+                u = u[-1]
             u_seq_list.append(u.detach().cpu().numpy())
     
     # Convert to list of individual sequences
