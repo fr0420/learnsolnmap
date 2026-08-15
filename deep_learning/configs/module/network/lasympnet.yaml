@@ -1,0 +1,6 @@
+_target_: networks.sympnet.LASympNet
+input_dim: 4
+layers: 20
+sublayers: 4
+activation:
+  _target_: torch.nn.Sigmoid
