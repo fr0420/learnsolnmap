@@ -4,12 +4,15 @@ from modules.variable_timestep import IdentityEnforcedSolutionMap, T0CenteredSol
 from modules.variable_timestep_taylor import TaylorBasedIdentityEnforcedSolutionMap, TaylorBasedT0CenteredSolutionMap
 from modules.variable_timestep_taylor_sf import SFTaylorBasedIdentityEnforcedSolutionMap, SFTaylorBasedT0CenteredSolutionMap
 
-def load_model_from_ckpt(ckpt_path, model_name="T0CenteredSolutionMap", strict=True):
+def load_model_from_ckpt(ckpt_path, model_name="T0CenteredSolutionMap", strict=True, load_net_T0_only=False):
     """
     Loads a model from a checkpoint file.
 
     Args:
         ckpt_path (str): Path to the checkpoint file.
+        model_name (str): Name of the model to load.
+        strict (bool): Whether to strictly load the state dictionary.
+        load_net_T0_only (bool): Whether to load only the net_T0 module for TaylorBasedT0CenteredSolutionMap. Temporary fix.
 
     Returns:
         model (SolutionMap): The model loaded with trained weights and set to evaluation mode.
@@ -33,6 +36,13 @@ def load_model_from_ckpt(ckpt_path, model_name="T0CenteredSolutionMap", strict=T
     loss_target = hyper_params["loss"]["_target_"]
     if loss_target.startswith("losses") and loss_target.split(".")[1] != "losses":
         hyper_params["loss"]["_target_"] = "losses." + hyper_params["loss"]["_target_"]
+
+    # Temporary fix for inconsistent use_dudt usage in net_T0 and net_residual
+    if model_name == "TaylorBasedT0CenteredSolutionMap":
+        if not hyper_params.get("use_dudt", False): 
+            if "net_residual" in hyper_params and "net_T0" in hyper_params:
+                if hyper_params["net_residual"].get("input_dim", 0) - hyper_params["net_T0"].get("input_dim", 0) != 1:
+                    hyper_params["net_residual"]["input_dim"] = hyper_params["net_T0"]["input_dim"] + 1
 
     # Instantiate the model using hyperparameters
     model = {
@@ -59,7 +69,16 @@ def load_model_from_ckpt(ckpt_path, model_name="T0CenteredSolutionMap", strict=T
     model.to(dtype=dtype)
 
     # Load model state from the checkpoint
-    message = model.load_state_dict(state_dict, strict=strict)
+    if load_net_T0_only and model_name in [
+        "T0CenteredSolutionMap",
+        "TaylorBasedT0CenteredSolutionMap", 
+        "SFTaylorBasedT0CenteredSolutionMap",
+    ]:
+        net_T0_state_dict = {k.replace("net_T0.", ""): v for k, v in state_dict.items() if k.startswith("net_T0.")}
+        message = model.net_T0.load_state_dict(net_T0_state_dict, strict=strict)
+        print(message)
+    else:
+        message = model.load_state_dict(state_dict, strict=strict)
     if message is not None:
         if message.missing_keys:
             print(f"Warning: Missing keys in the state dictionary: {message.missing_keys}")
